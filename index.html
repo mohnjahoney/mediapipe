@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MediaPipe Face Tone Instrument</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <section class="stage">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="loading" class="loading">Loading MediaPipe...</div>
+      </section>
+
+      <section class="controls" aria-label="Instrument controls">
+        <div class="header">
+          <h1>Face Tone Instrument</h1>
+          <p>Open your mouth for the low tone. Close your eyes for the higher tone.</p>
+        </div>
+
+        <div class="buttons">
+          <button id="startButton" type="button" disabled>Start Camera + Audio</button>
+          <button id="stopButton" type="button" disabled>Stop</button>
+        </div>
+
+        <div id="status" class="status">Waiting to start.</div>
+
+        <div class="meter-grid">
+          <label class="meter">
+            <span>Mouth openness</span>
+            <progress id="mouthOpenMeter" max="1" value="0"></progress>
+            <output id="mouthOpenValue">0.00</output>
+          </label>
+
+          <label class="meter">
+            <span>Eye openness</span>
+            <progress id="eyeOpenMeter" max="1" value="0"></progress>
+            <output id="eyeOpenValue">0.00</output>
+          </label>
+
+          <label class="meter">
+            <span>Low tone volume</span>
+            <progress id="mouthVolumeMeter" max="1" value="0"></progress>
+            <output id="mouthVolumeValue">0.00</output>
+          </label>
+
+          <label class="meter">
+            <span>High tone volume</span>
+            <progress id="eyeVolumeMeter" max="1" value="0"></progress>
+            <output id="eyeVolumeValue">0.00</output>
+          </label>
+        </div>
+
+        <details>
+          <summary>Tuning</summary>
+          <label>
+            Mouth threshold
+            <input id="mouthThreshold" type="range" min="0.05" max="0.5" step="0.01" value="0.18">
+          </label>
+          <label>
+            Eye open threshold
+            <input id="eyeOpenThreshold" type="range" min="0.08" max="0.35" step="0.01" value="0.21">
+          </label>
+          <label>
+            Smoothing
+            <input id="smoothing" type="range" min="0.02" max="0.35" step="0.01" value="0.16">
+          </label>
+        </details>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
