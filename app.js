@@ -184,7 +184,7 @@ function updateSignals({ mouthOpen, eyeOpen }) {
 
   if (audio) {
     const now = audio.context.currentTime;
-    audio.mouthGain.gain.setTargetAtTime(smoothedMouthVolume * 0.2, now, 0.035);
+    audio.mouthGain.gain.setTargetAtTime(smoothedMouthVolume * 0.16, now, 0.035);
     audio.eyeGain.gain.setTargetAtTime(smoothedEyeVolume * 0.12, now, 0.035);
   }
 
@@ -193,7 +193,7 @@ function updateSignals({ mouthOpen, eyeOpen }) {
 
 function createAudio() {
   const context = new AudioContext();
-  const mouthOsc = new OscillatorNode(context, { frequency: 110, type: "sine" });
+  const mouthOsc = new OscillatorNode(context, { frequency: 220, type: "square" });
   const eyeOsc = new OscillatorNode(context, { frequency: 550, type: "sine" });
   const mouthGain = new GainNode(context, { gain: 0 });
   const eyeGain = new GainNode(context, { gain: 0 });
