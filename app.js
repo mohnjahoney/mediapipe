@@ -89,7 +89,7 @@ function runFrame() {
 
   if (landmarks) {
     const rawSignals = measureFaceSignals(landmarks, settings.thresholds);
-    const outputSignals = applyDelay(rawSignals, settings.delaySeconds);
+    const outputSignals = mapSignalsToVolumes(rawSignals, settings);
 
     audio?.setVolumes(outputSignals);
     ui.updateMeters({ ...rawSignals, ...outputSignals });
@@ -101,7 +101,7 @@ function runFrame() {
     ui.setStatus("Tracking face.");
   } else {
     const rawSignals = { mouthOpen: 0, eyeOpen: 1 };
-    const outputSignals = applyDelay(rawSignals, settings.delaySeconds);
+    const outputSignals = mapSignalsToVolumes(rawSignals, settings);
 
     audio?.setVolumes(outputSignals);
     ui.updateMeters({ ...rawSignals, ...outputSignals });
@@ -111,13 +111,19 @@ function runFrame() {
   animationFrameId = requestAnimationFrame(runFrame);
 }
 
-function applyDelay(rawSignals, delaySeconds) {
+function mapSignalsToVolumes(rawSignals, settings) {
   signalDelay.push(rawSignals);
 
-  const delayedSignals = signalDelay.get(delaySeconds) ?? rawSignals;
+  const delayedSignals = signalDelay.get(settings.delaySeconds) ?? rawSignals;
+  const mouthVolume = delayedSignals.mouthOpen;
+  const eyeVolume = 1 - delayedSignals.eyeOpen;
+
+  if (!settings.binaryAudio) {
+    return { mouthVolume, eyeVolume };
+  }
 
   return {
-    mouthVolume: delayedSignals.mouthOpen,
-    eyeVolume: 1 - delayedSignals.eyeOpen,
+    mouthVolume: mouthVolume >= 0.5 ? 1 : 0,
+    eyeVolume: eyeVolume >= 0.5 ? 1 : 0,
   };
 }

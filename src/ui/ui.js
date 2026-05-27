@@ -17,6 +17,7 @@ export function createUI() {
     mouthFrequencyValue: document.querySelector("#mouthFrequencyValue"),
     eyeFrequencyValue: document.querySelector("#eyeFrequencyValue"),
     delayValue: document.querySelector("#delayValue"),
+    binaryAudio: document.querySelector("#binaryAudio"),
     showOverlay: document.querySelector("#showOverlay"),
     cameraResolution: document.querySelector("#cameraResolution"),
     resolutionValue: document.querySelector("#resolutionValue"),
@@ -64,6 +65,7 @@ export function createUI() {
         mouthFrequency: Number(elements.mouthFrequency.value),
         eyeFrequency: Number(elements.eyeFrequency.value),
         delaySeconds: Number(elements.dataDelay.value),
+        binaryAudio: elements.binaryAudio.checked,
         showOverlay: elements.showOverlay.checked,
         resolution: getResolutionPreset(elements.cameraResolution.value),
       };
