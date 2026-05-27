@@ -41,6 +41,12 @@
           </label>
 
           <label class="meter">
+            <span>Red pixel <strong id="redFrequencyLabel">1200 Hz</strong></span>
+            <progress id="redPixelMeter" max="1" value="0"></progress>
+            <output id="redPixelValue">0.00</output>
+          </label>
+
+          <label class="meter">
             <span>Low tone volume</span>
             <progress id="mouthVolumeMeter" max="1" value="0"></progress>
             <output id="mouthVolumeValue">0.00</output>
@@ -50,6 +56,12 @@
             <span>High tone volume</span>
             <progress id="eyeVolumeMeter" max="1" value="0"></progress>
             <output id="eyeVolumeValue">0.00</output>
+          </label>
+
+          <label class="meter">
+            <span>Red tone volume</span>
+            <progress id="redVolumeMeter" max="1" value="0"></progress>
+            <output id="redVolumeValue">0.00</output>
           </label>
         </div>
 
@@ -72,12 +84,24 @@
             <input id="eyeFrequency" type="range" min="10" max="5000" step="1" value="2000">
           </label>
           <label>
+            Red pixel pitch <output id="redFrequencyValue">1200 Hz</output>
+            <input id="redFrequency" type="range" min="10" max="5000" step="1" value="1200">
+          </label>
+          <label>
+            Red decision point <output id="redDecisionValue">0.50</output>
+            <input id="redDecision" type="range" min="0" max="1" step="0.01" value="0.5">
+          </label>
+          <label>
             Data delay <output id="delayValue">0.00 s</output>
             <input id="dataDelay" type="range" min="0" max="2" step="0.01" value="0">
           </label>
           <label class="checkbox-label">
             <input id="binaryAudio" type="checkbox">
             Binary audio response
+          </label>
+          <label class="checkbox-label">
+            <input id="enableFaceAnalysis" type="checkbox" checked>
+            Enable facial analysis
           </label>
           <label class="checkbox-label">
             <input id="showOverlay" type="checkbox" checked>
@@ -95,6 +119,6 @@
       </section>
     </main>
 
-    <script type="module" src="app.js?v=2026-05-27-binary-any-positive"></script>
+    <script type="module" src="app.js?v=2026-05-27-red-pixel-face-toggle"></script>
   </body>
 </html>

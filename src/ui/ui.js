@@ -11,13 +11,19 @@ export function createUI() {
     eyeOpenThreshold: document.querySelector("#eyeOpenThreshold"),
     mouthFrequency: document.querySelector("#mouthFrequency"),
     eyeFrequency: document.querySelector("#eyeFrequency"),
+    redFrequency: document.querySelector("#redFrequency"),
+    redDecision: document.querySelector("#redDecision"),
     dataDelay: document.querySelector("#dataDelay"),
     mouthFrequencyLabel: document.querySelector("#mouthFrequencyLabel"),
     eyeFrequencyLabel: document.querySelector("#eyeFrequencyLabel"),
+    redFrequencyLabel: document.querySelector("#redFrequencyLabel"),
     mouthFrequencyValue: document.querySelector("#mouthFrequencyValue"),
     eyeFrequencyValue: document.querySelector("#eyeFrequencyValue"),
+    redFrequencyValue: document.querySelector("#redFrequencyValue"),
+    redDecisionValue: document.querySelector("#redDecisionValue"),
     delayValue: document.querySelector("#delayValue"),
     binaryAudio: document.querySelector("#binaryAudio"),
+    enableFaceAnalysis: document.querySelector("#enableFaceAnalysis"),
     showOverlay: document.querySelector("#showOverlay"),
     cameraResolution: document.querySelector("#cameraResolution"),
     resolutionValue: document.querySelector("#resolutionValue"),
@@ -28,6 +34,8 @@ export function createUI() {
     eyeOpen: bindMeter("eyeOpen"),
     mouthVolume: bindMeter("mouthVolume"),
     eyeVolume: bindMeter("eyeVolume"),
+    redPixel: bindMeter("redPixel"),
+    redVolume: bindMeter("redVolume"),
   };
 
   return {
@@ -42,6 +50,11 @@ export function createUI() {
     onFrequencyChange(handler) {
       elements.mouthFrequency.addEventListener("input", handler);
       elements.eyeFrequency.addEventListener("input", handler);
+      elements.redFrequency.addEventListener("input", handler);
+    },
+
+    onRedDecisionChange(handler) {
+      elements.redDecision.addEventListener("input", handler);
     },
 
     onDelayChange(handler) {
@@ -64,8 +77,11 @@ export function createUI() {
         },
         mouthFrequency: Number(elements.mouthFrequency.value),
         eyeFrequency: Number(elements.eyeFrequency.value),
+        redFrequency: Number(elements.redFrequency.value),
+        redDecision: Number(elements.redDecision.value),
         delaySeconds: Number(elements.dataDelay.value),
         binaryAudio: elements.binaryAudio.checked,
+        enableFaceAnalysis: elements.enableFaceAnalysis.checked,
         showOverlay: elements.showOverlay.checked,
         resolution: getResolutionPreset(elements.cameraResolution.value),
       };
@@ -109,11 +125,17 @@ export function createUI() {
     },
 
     updateFrequencyLabels() {
-      const { mouthFrequency, eyeFrequency } = this.getSettings();
+      const { mouthFrequency, eyeFrequency, redFrequency } = this.getSettings();
       elements.mouthFrequencyLabel.textContent = `${mouthFrequency} Hz`;
       elements.eyeFrequencyLabel.textContent = `${eyeFrequency} Hz`;
+      elements.redFrequencyLabel.textContent = `${redFrequency} Hz`;
       elements.mouthFrequencyValue.value = `${mouthFrequency} Hz`;
       elements.eyeFrequencyValue.value = `${eyeFrequency} Hz`;
+      elements.redFrequencyValue.value = `${redFrequency} Hz`;
+    },
+
+    updateRedDecisionLabel() {
+      elements.redDecisionValue.value = this.getSettings().redDecision.toFixed(2);
     },
 
     updateDelayLabel() {
@@ -124,11 +146,13 @@ export function createUI() {
       elements.resolutionValue.value = this.getSettings().resolution.label;
     },
 
-    updateMeters({ mouthOpen, eyeOpen, mouthVolume, eyeVolume }) {
+    updateMeters({ mouthOpen, eyeOpen, redPixel, mouthVolume, eyeVolume, redVolume }) {
       setMeter(meters.mouthOpen, mouthOpen);
       setMeter(meters.eyeOpen, eyeOpen);
+      setMeter(meters.redPixel, redPixel);
       setMeter(meters.mouthVolume, mouthVolume);
       setMeter(meters.eyeVolume, eyeVolume);
+      setMeter(meters.redVolume, redVolume);
     },
   };
 }

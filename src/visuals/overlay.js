@@ -34,5 +34,15 @@ export function createOverlay(canvas) {
         lineWidth: 2,
       });
     },
+
+    drawSampleBox(point, size = 5) {
+      const x = point.x * canvas.width;
+      const y = point.y * canvas.height;
+      const halfSize = size / 2;
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - halfSize, y - halfSize, size, size);
+    },
   };
 }
