@@ -1,5 +1,6 @@
 import { DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
 import { FaceLandmarker } from "../media/face-tracker.js";
+import { HandLandmarker } from "../media/hand-tracker.js";
 
 export function createOverlay(canvas) {
   const ctx = canvas.getContext("2d");
@@ -21,6 +22,14 @@ export function createOverlay(canvas) {
     },
 
     drawFace(landmarks) {
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+        color: "rgba(141, 183, 255, 0.22)",
+        lineWidth: 1,
+      });
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {
+        color: "#8db7ff",
+        lineWidth: 2,
+      });
       drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
         color: "#8db7ff",
         lineWidth: 2,
@@ -29,10 +38,41 @@ export function createOverlay(canvas) {
         color: "#d6e4ff",
         lineWidth: 2,
       });
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, {
+        color: "#ffffff",
+        lineWidth: 2,
+      });
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, {
+        color: "#d6e4ff",
+        lineWidth: 2,
+      });
       drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
         color: "#d6e4ff",
         lineWidth: 2,
       });
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, {
+        color: "#ffffff",
+        lineWidth: 2,
+      });
+      drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, {
+        color: "#d6e4ff",
+        lineWidth: 2,
+      });
+    },
+
+    drawHands(hands) {
+      for (const landmarks of hands) {
+        drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, {
+          color: "#7ff0c8",
+          lineWidth: 3,
+        });
+        drawingUtils.drawLandmarks(landmarks, {
+          color: "#ffffff",
+          fillColor: "#7ff0c8",
+          lineWidth: 1,
+          radius: 2,
+        });
+      }
     },
 
     drawSampleBox(point, size = 5) {

@@ -24,6 +24,7 @@ export function createUI() {
     delayValue: document.querySelector("#delayValue"),
     binaryAudio: document.querySelector("#binaryAudio"),
     enableFaceAnalysis: document.querySelector("#enableFaceAnalysis"),
+    enableHandAnalysis: document.querySelector("#enableHandAnalysis"),
     showOverlay: document.querySelector("#showOverlay"),
     cameraResolution: document.querySelector("#cameraResolution"),
     resolutionValue: document.querySelector("#resolutionValue"),
@@ -82,6 +83,7 @@ export function createUI() {
         delaySeconds: Number(elements.dataDelay.value),
         binaryAudio: elements.binaryAudio.checked,
         enableFaceAnalysis: elements.enableFaceAnalysis.checked,
+        enableHandAnalysis: elements.enableHandAnalysis.checked,
         showOverlay: elements.showOverlay.checked,
         resolution: getResolutionPreset(elements.cameraResolution.value),
       };

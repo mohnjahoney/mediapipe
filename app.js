@@ -1,7 +1,9 @@
 import { startCamera, stopCamera } from "./src/core/camera.js";
 import { createSignalDelay } from "./src/core/signal-delay.js";
 import { createFaceTracker } from "./src/media/face-tracker.js";
+import { createHandTracker } from "./src/media/hand-tracker.js";
 import { measureFaceSignals } from "./src/signals/face-signals.js";
+import { measureHandSignals } from "./src/signals/hand-signals.js";
 import { createRedPixelSampler } from "./src/signals/pixel-signals.js";
 import { createAudioEngine } from "./src/audio/audio-engine.js";
 import { createOverlay } from "./src/visuals/overlay.js";
@@ -18,6 +20,7 @@ const redPixelSampler = createRedPixelSampler();
 const mappingEngine = createMappingEngine(DEFAULT_MAPPINGS);
 
 let faceTracker;
+let handTracker;
 let stream;
 let animationFrameId = 0;
 let audio;
@@ -44,6 +47,7 @@ initMediaPipe();
 async function initMediaPipe() {
   try {
     faceTracker = await createFaceTracker();
+    handTracker = await createHandTracker();
     ui.setReady();
   } catch (error) {
     ui.setLoadFailed(error.message);
@@ -54,7 +58,7 @@ async function start() {
   ui.setStarting();
 
   try {
-    if (!faceTracker) {
+    if (!faceTracker || !handTracker) {
       ui.setStartFailed("MediaPipe is still loading. Try again in a moment.");
       return;
     }
@@ -93,7 +97,7 @@ function stop() {
 }
 
 function runFrame() {
-  if (!faceTracker || !stream) return;
+  if (!faceTracker || !handTracker || !stream) return;
 
   overlay.resizeToVideo(video);
   overlay.clear();
@@ -102,7 +106,12 @@ function runFrame() {
   const faceSignals = settings.enableFaceAnalysis
     ? getFaceSignals(settings)
     : { landmarks: null, signals: { mouthOpen: 0, eyeOpen: 1 } };
-  const rawSignals = createSignals(faceSignals.signals, redPixelSampler.sample(video));
+  const hands = settings.enableHandAnalysis ? handTracker.detect(video) : [];
+  const rawSignals = createSignals(
+    faceSignals.signals,
+    measureHandSignals(hands),
+    redPixelSampler.sample(video)
+  );
   const outputSignals = processMappings(rawSignals, settings);
 
   audio?.setVolumes(outputSignals);
@@ -116,13 +125,18 @@ function runFrame() {
   if (faceSignals.landmarks && settings.showOverlay) {
     overlay.drawFace(faceSignals.landmarks);
   }
+  if (hands.length > 0 && settings.showOverlay) {
+    overlay.drawHands(hands);
+  }
 
-  if (!settings.enableFaceAnalysis) {
-    ui.setStatus("Facial analysis off.");
+  if (!settings.enableFaceAnalysis && !settings.enableHandAnalysis) {
+    ui.setStatus("Face and hand analysis off.");
+  } else if (!settings.enableFaceAnalysis) {
+    ui.setStatus(`Facial analysis off. Hands: ${hands.length}.`);
   } else if (faceSignals.landmarks) {
-    ui.setStatus("Tracking face.");
+    ui.setStatus(`Tracking face. Hands: ${hands.length}.`);
   } else {
-    ui.setStatus("No face detected.");
+    ui.setStatus(`No face detected. Hands: ${hands.length}.`);
   }
 
   overlay.drawSampleBox(redPixelSampler.point);
@@ -140,11 +154,12 @@ function getFaceSignals(settings) {
   };
 }
 
-function createSignals(faceSignals, pixelSignals) {
+function createSignals(faceSignals, handSignals, pixelSignals) {
   return {
     "face.mouthOpen": faceSignals.mouthOpen,
     "face.eyeOpen": faceSignals.eyeOpen,
     "face.eyeClosed": 1 - faceSignals.eyeOpen,
+    ...handSignals,
     "pixel.redCorner": pixelSignals.redPixel,
   };
 }
