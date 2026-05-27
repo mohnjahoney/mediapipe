@@ -6,6 +6,8 @@ import { createRedPixelSampler } from "./src/signals/pixel-signals.js";
 import { createAudioEngine } from "./src/audio/audio-engine.js";
 import { createOverlay } from "./src/visuals/overlay.js";
 import { createUI } from "./src/ui/ui.js";
+import { createMappingEngine } from "./src/mapping/mapping-engine.js";
+import { DEFAULT_MAPPINGS } from "./src/mapping/default-mappings.js";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");
@@ -13,6 +15,7 @@ const ui = createUI();
 const overlay = createOverlay(canvas);
 const signalDelay = createSignalDelay();
 const redPixelSampler = createRedPixelSampler();
+const mappingEngine = createMappingEngine(DEFAULT_MAPPINGS);
 
 let faceTracker;
 let stream;
@@ -99,14 +102,16 @@ function runFrame() {
   const faceSignals = settings.enableFaceAnalysis
     ? getFaceSignals(settings)
     : { landmarks: null, signals: { mouthOpen: 0, eyeOpen: 1 } };
-  const rawSignals = {
-    ...faceSignals.signals,
-    ...redPixelSampler.sample(video),
-  };
-  const outputSignals = mapSignalsToVolumes(rawSignals, settings);
+  const rawSignals = createSignals(faceSignals.signals, redPixelSampler.sample(video));
+  const outputSignals = processMappings(rawSignals, settings);
 
   audio?.setVolumes(outputSignals);
-  ui.updateMeters({ ...rawSignals, ...outputSignals });
+  ui.updateMeters({
+    mouthOpen: rawSignals["face.mouthOpen"],
+    eyeOpen: rawSignals["face.eyeOpen"],
+    redPixel: rawSignals["pixel.redCorner"],
+    ...outputSignals,
+  });
 
   if (faceSignals.landmarks && settings.showOverlay) {
     overlay.drawFace(faceSignals.landmarks);
@@ -135,21 +140,18 @@ function getFaceSignals(settings) {
   };
 }
 
-function mapSignalsToVolumes(rawSignals, settings) {
-  signalDelay.push(rawSignals);
-
-  const delayedSignals = signalDelay.get(settings.delaySeconds) ?? rawSignals;
-  const mouthVolume = delayedSignals.mouthOpen;
-  const eyeVolume = 1 - delayedSignals.eyeOpen;
-  const redVolume = delayedSignals.redPixel;
-
-  if (!settings.binaryAudio) {
-    return { mouthVolume, eyeVolume, redVolume };
-  }
-
+function createSignals(faceSignals, pixelSignals) {
   return {
-    mouthVolume: mouthVolume > 0 ? 1 : 0,
-    eyeVolume: eyeVolume > 0 ? 1 : 0,
-    redVolume: redVolume > settings.redDecision ? 1 : 0,
+    "face.mouthOpen": faceSignals.mouthOpen,
+    "face.eyeOpen": faceSignals.eyeOpen,
+    "face.eyeClosed": 1 - faceSignals.eyeOpen,
+    "pixel.redCorner": pixelSignals.redPixel,
   };
+}
+
+function processMappings(rawSignals, settings) {
+  signalDelay.push(rawSignals);
+  const delayedSignals = signalDelay.get(settings.delaySeconds) ?? rawSignals;
+
+  return mappingEngine.process(delayedSignals, settings);
 }
