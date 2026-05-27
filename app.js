@@ -193,8 +193,8 @@ function updateSignals({ mouthOpen, eyeOpen }) {
 
 function createAudio() {
   const context = new AudioContext();
-  const mouthOsc = new OscillatorNode(context, { frequency: 220, type: "square" });
-  const eyeOsc = new OscillatorNode(context, { frequency: 550, type: "sine" });
+  const mouthOsc = new OscillatorNode(context, { frequency: 880, type: "square" });
+  const eyeOsc = new OscillatorNode(context, { frequency: 2000, type: "sine" });
   const mouthGain = new GainNode(context, { gain: 0 });
   const eyeGain = new GainNode(context, { gain: 0 });
   const masterGain = new GainNode(context, { gain: 0.85 });
