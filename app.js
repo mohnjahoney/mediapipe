@@ -1,124 +1,66 @@
-import {
-  FaceLandmarker,
-  FilesetResolver,
-  DrawingUtils,
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35";
-
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
-const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
+import { startCamera, stopCamera } from "./src/core/camera.js";
+import { createSignalDelay } from "./src/core/signal-delay.js";
+import { createFaceTracker } from "./src/media/face-tracker.js";
+import { measureFaceSignals } from "./src/signals/face-signals.js";
+import { createAudioEngine } from "./src/audio/audio-engine.js";
+import { createOverlay } from "./src/visuals/overlay.js";
+import { createUI } from "./src/ui/ui.js";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");
-const loading = document.querySelector("#loading");
-const startButton = document.querySelector("#startButton");
-const stopButton = document.querySelector("#stopButton");
-const statusEl = document.querySelector("#status");
-const mouthThresholdInput = document.querySelector("#mouthThreshold");
-const eyeOpenThresholdInput = document.querySelector("#eyeOpenThreshold");
-const mouthFrequencyInput = document.querySelector("#mouthFrequency");
-const eyeFrequencyInput = document.querySelector("#eyeFrequency");
-const dataDelayInput = document.querySelector("#dataDelay");
-const mouthFrequencyLabel = document.querySelector("#mouthFrequencyLabel");
-const eyeFrequencyLabel = document.querySelector("#eyeFrequencyLabel");
-const mouthFrequencyValue = document.querySelector("#mouthFrequencyValue");
-const eyeFrequencyValue = document.querySelector("#eyeFrequencyValue");
-const delayValue = document.querySelector("#delayValue");
-const showOverlayInput = document.querySelector("#showOverlay");
-const cameraResolutionInput = document.querySelector("#cameraResolution");
-const resolutionValue = document.querySelector("#resolutionValue");
+const ui = createUI();
+const overlay = createOverlay(canvas);
+const signalDelay = createSignalDelay();
 
-const RESOLUTION_PRESETS = {
-  full: { label: "Full", width: 1280, height: 720 },
-  half: { label: "Half", width: 640, height: 360 },
-  quarter: { label: "Quarter", width: 320, height: 180 },
-};
-
-const meters = {
-  mouthOpen: bindMeter("mouthOpen"),
-  eyeOpen: bindMeter("eyeOpen"),
-  mouthVolume: bindMeter("mouthVolume"),
-  eyeVolume: bindMeter("eyeVolume"),
-};
-
-const ctx = canvas.getContext("2d");
-const drawingUtils = new DrawingUtils(ctx);
-
-let faceLandmarker;
+let faceTracker;
 let stream;
 let animationFrameId = 0;
 let audio;
-let signalHistory = [];
 
-startButton.addEventListener("click", start);
-stopButton.addEventListener("click", stop);
-mouthFrequencyInput.addEventListener("input", updateFrequencyControls);
-eyeFrequencyInput.addEventListener("input", updateFrequencyControls);
-dataDelayInput.addEventListener("input", updateDelayControl);
-showOverlayInput.addEventListener("change", updateOverlayControl);
-cameraResolutionInput.addEventListener("change", updateResolutionControl);
+ui.onStart(start);
+ui.onStop(stop);
+ui.onFrequencyChange(() => {
+  ui.updateFrequencyLabels();
+  audio?.setFrequencies(ui.getSettings());
+});
+ui.onDelayChange(() => ui.updateDelayLabel());
+ui.onOverlayChange(() => {
+  if (!ui.getSettings().showOverlay) overlay.clear();
+});
+ui.onResolutionChange(() => ui.updateResolutionLabel());
 
+ui.updateFrequencyLabels();
+ui.updateDelayLabel();
+ui.updateResolutionLabel();
 initMediaPipe();
-updateFrequencyControls();
-updateDelayControl();
-updateOverlayControl();
-updateResolutionControl();
 
 async function initMediaPipe() {
   try {
-    const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: MODEL_URL,
-        delegate: "GPU",
-      },
-      runningMode: "VIDEO",
-      numFaces: 1,
-    });
-    loading.hidden = true;
-    startButton.disabled = false;
-    setStatus("Ready.");
+    faceTracker = await createFaceTracker();
+    ui.setReady();
   } catch (error) {
-    loading.textContent = "MediaPipe failed to load.";
-    setStatus(error.message);
+    ui.setLoadFailed(error.message);
   }
 }
 
 async function start() {
-  startButton.disabled = true;
-  setStatus("Starting camera...");
+  ui.setStarting();
 
   try {
-    if (!faceLandmarker) {
-      setStatus("MediaPipe is still loading. Try again in a moment.");
-      startButton.disabled = false;
+    if (!faceTracker) {
+      ui.setStartFailed("MediaPipe is still loading. Try again in a moment.");
       return;
     }
 
-    const resolution = getSelectedResolution();
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: resolution.width },
-        height: { ideal: resolution.height },
-      },
-      audio: false,
-    });
+    stream = await startCamera(video, ui.getSettings().resolution);
+    audio = createAudioEngine(ui.getSettings());
+    await audio.start();
 
-    video.srcObject = stream;
-    await video.play();
-
-    audio = createAudio();
-    await audio.context.resume();
-
-    stopButton.disabled = false;
-    resizeCanvas();
-    setStatus("Tracking face.");
+    overlay.resizeToVideo(video);
+    ui.setRunning();
     runFrame();
   } catch (error) {
-    setStatus(error.message);
-    startButton.disabled = false;
-    stopButton.disabled = true;
+    ui.setStartFailed(error.message);
   }
 }
 
@@ -126,227 +68,56 @@ function stop() {
   cancelAnimationFrame(animationFrameId);
   animationFrameId = 0;
 
-  if (audio) {
-    audio.mouthGain.gain.setTargetAtTime(0, audio.context.currentTime, 0.04);
-    audio.eyeGain.gain.setTargetAtTime(0, audio.context.currentTime, 0.04);
-    window.setTimeout(() => {
-      audio.mouthOsc.stop();
-      audio.eyeOsc.stop();
-      audio.context.close();
-      audio = null;
-    }, 150);
-  }
-
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-    stream = null;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  video.srcObject = null;
-  signalHistory = [];
-  startButton.disabled = false;
-  stopButton.disabled = true;
-  setStatus("Stopped.");
-  updateMeters(0, 0, 0, 0);
+  audio?.stop();
+  audio = null;
+  stopCamera(stream, video);
+  stream = null;
+  signalDelay.clear();
+  overlay.clear();
+  ui.setStopped();
+  ui.updateMeters({ mouthOpen: 0, eyeOpen: 0, mouthVolume: 0, eyeVolume: 0 });
 }
 
 function runFrame() {
-  if (!faceLandmarker || !stream) return;
+  if (!faceTracker || !stream) return;
 
-  resizeCanvas();
-  const result = faceLandmarker.detectForVideo(video, performance.now());
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  overlay.resizeToVideo(video);
+  overlay.clear();
 
-  const landmarks = result.faceLandmarks?.[0];
+  const settings = ui.getSettings();
+  const landmarks = faceTracker.detect(video);
+
   if (landmarks) {
-    const measurements = measureFace(landmarks);
-    updateSignals(measurements);
-    if (showOverlayInput.checked) {
-      drawDebug(landmarks);
+    const rawSignals = measureFaceSignals(landmarks, settings.thresholds);
+    const outputSignals = applyDelay(rawSignals, settings.delaySeconds);
+
+    audio?.setVolumes(outputSignals);
+    ui.updateMeters({ ...rawSignals, ...outputSignals });
+
+    if (settings.showOverlay) {
+      overlay.drawFace(landmarks);
     }
-    setStatus("Tracking face.");
+
+    ui.setStatus("Tracking face.");
   } else {
-    updateSignals({ mouthOpen: 0, eyeOpen: 1 });
-    setStatus("No face detected.");
+    const rawSignals = { mouthOpen: 0, eyeOpen: 1 };
+    const outputSignals = applyDelay(rawSignals, settings.delaySeconds);
+
+    audio?.setVolumes(outputSignals);
+    ui.updateMeters({ ...rawSignals, ...outputSignals });
+    ui.setStatus("No face detected.");
   }
 
   animationFrameId = requestAnimationFrame(runFrame);
 }
 
-function measureFace(landmarks) {
-  const mouthWidth = distance(landmarks[61], landmarks[291]);
-  const mouthHeight = distance(landmarks[13], landmarks[14]);
-  const leftEyeWidth = distance(landmarks[33], landmarks[133]);
-  const leftEyeHeight = average(
-    distance(landmarks[159], landmarks[145]),
-    distance(landmarks[158], landmarks[153])
-  );
-  const rightEyeWidth = distance(landmarks[362], landmarks[263]);
-  const rightEyeHeight = average(
-    distance(landmarks[386], landmarks[374]),
-    distance(landmarks[385], landmarks[380])
-  );
+function applyDelay(rawSignals, delaySeconds) {
+  signalDelay.push(rawSignals);
 
-  const mouthRatio = mouthHeight / Math.max(mouthWidth, 0.001);
-  const leftEyeRatio = leftEyeHeight / Math.max(leftEyeWidth, 0.001);
-  const rightEyeRatio = rightEyeHeight / Math.max(rightEyeWidth, 0.001);
+  const delayedSignals = signalDelay.get(delaySeconds) ?? rawSignals;
 
   return {
-    mouthOpen: normalize(mouthRatio, 0.02, Number(mouthThresholdInput.value)),
-    eyeOpen: normalize(average(leftEyeRatio, rightEyeRatio), 0.08, Number(eyeOpenThresholdInput.value)),
+    mouthVolume: delayedSignals.mouthOpen,
+    eyeVolume: 1 - delayedSignals.eyeOpen,
   };
-}
-
-function updateSignals({ mouthOpen, eyeOpen }) {
-  const nowMs = performance.now();
-  const delayMs = Number(dataDelayInput.value) * 1000;
-  signalHistory.push({ time: nowMs, mouthOpen, eyeOpen });
-  signalHistory = signalHistory.filter((sample) => sample.time >= nowMs - 2500);
-
-  const delayedSample = getDelayedSample(nowMs - delayMs) ?? { mouthOpen, eyeOpen };
-  const mouthVolume = delayedSample.mouthOpen;
-  const eyeVolume = 1 - delayedSample.eyeOpen;
-
-  if (audio) {
-    const now = audio.context.currentTime;
-    audio.mouthGain.gain.setValueAtTime(mouthVolume * 0.16, now);
-    audio.eyeGain.gain.setValueAtTime(eyeVolume * 0.12, now);
-  }
-
-  updateMeters(mouthOpen, eyeOpen, mouthVolume, eyeVolume);
-}
-
-function createAudio() {
-  const context = new AudioContext();
-  const mouthOsc = new OscillatorNode(context, {
-    frequency: Number(mouthFrequencyInput.value),
-    type: "square",
-  });
-  const eyeOsc = new OscillatorNode(context, {
-    frequency: Number(eyeFrequencyInput.value),
-    type: "sine",
-  });
-  const mouthGain = new GainNode(context, { gain: 0 });
-  const eyeGain = new GainNode(context, { gain: 0 });
-  const masterGain = new GainNode(context, { gain: 0.85 });
-
-  mouthOsc.connect(mouthGain);
-  eyeOsc.connect(eyeGain);
-  mouthGain.connect(masterGain);
-  eyeGain.connect(masterGain);
-  masterGain.connect(context.destination);
-  mouthOsc.start();
-  eyeOsc.start();
-
-  return { context, mouthOsc, eyeOsc, mouthGain, eyeGain };
-}
-
-function getDelayedSample(targetTime) {
-  for (let index = signalHistory.length - 1; index >= 0; index -= 1) {
-    if (signalHistory[index].time <= targetTime) {
-      return signalHistory[index];
-    }
-  }
-
-  return signalHistory[0];
-}
-
-function updateFrequencyControls() {
-  const mouthFrequency = Number(mouthFrequencyInput.value);
-  const eyeFrequency = Number(eyeFrequencyInput.value);
-
-  mouthFrequencyLabel.textContent = `${mouthFrequency} Hz`;
-  eyeFrequencyLabel.textContent = `${eyeFrequency} Hz`;
-  mouthFrequencyValue.value = `${mouthFrequency} Hz`;
-  eyeFrequencyValue.value = `${eyeFrequency} Hz`;
-
-  if (audio) {
-    const now = audio.context.currentTime;
-    audio.mouthOsc.frequency.setValueAtTime(mouthFrequency, now);
-    audio.eyeOsc.frequency.setValueAtTime(eyeFrequency, now);
-  }
-}
-
-function updateDelayControl() {
-  delayValue.value = `${Number(dataDelayInput.value).toFixed(2)} s`;
-}
-
-function updateOverlayControl() {
-  if (!showOverlayInput.checked) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-}
-
-function updateResolutionControl() {
-  resolutionValue.value = getSelectedResolution().label;
-}
-
-function getSelectedResolution() {
-  return RESOLUTION_PRESETS[cameraResolutionInput.value] ?? RESOLUTION_PRESETS.full;
-}
-
-function drawDebug(landmarks) {
-  drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
-    color: "#8db7ff",
-    lineWidth: 2,
-  });
-  drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
-    color: "#d6e4ff",
-    lineWidth: 2,
-  });
-  drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
-    color: "#d6e4ff",
-    lineWidth: 2,
-  });
-}
-
-function resizeCanvas() {
-  const width = video.videoWidth || canvas.clientWidth;
-  const height = video.videoHeight || canvas.clientHeight;
-
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-}
-
-function updateMeters(mouthOpen, eyeOpen, mouthVolume, eyeVolume) {
-  setMeter(meters.mouthOpen, mouthOpen);
-  setMeter(meters.eyeOpen, eyeOpen);
-  setMeter(meters.mouthVolume, mouthVolume);
-  setMeter(meters.eyeVolume, eyeVolume);
-}
-
-function bindMeter(name) {
-  return {
-    meter: document.querySelector(`#${name}Meter`),
-    value: document.querySelector(`#${name}Value`),
-  };
-}
-
-function setMeter(binding, value) {
-  const clamped = clamp(value);
-  binding.meter.value = clamped;
-  binding.value.value = clamped.toFixed(2);
-}
-
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function average(a, b) {
-  return (a + b) / 2;
-}
-
-function normalize(value, low, high) {
-  return clamp((value - low) / (high - low));
-}
-
-function clamp(value) {
-  return Math.min(1, Math.max(0, value));
-}
-
-function setStatus(message) {
-  statusEl.textContent = message;
 }

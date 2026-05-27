@@ -1,0 +1,145 @@
+import { clamp } from "../signals/signal-utils.js";
+import { getResolutionPreset } from "../core/camera.js";
+
+export function createUI() {
+  const elements = {
+    loading: document.querySelector("#loading"),
+    startButton: document.querySelector("#startButton"),
+    stopButton: document.querySelector("#stopButton"),
+    status: document.querySelector("#status"),
+    mouthThreshold: document.querySelector("#mouthThreshold"),
+    eyeOpenThreshold: document.querySelector("#eyeOpenThreshold"),
+    mouthFrequency: document.querySelector("#mouthFrequency"),
+    eyeFrequency: document.querySelector("#eyeFrequency"),
+    dataDelay: document.querySelector("#dataDelay"),
+    mouthFrequencyLabel: document.querySelector("#mouthFrequencyLabel"),
+    eyeFrequencyLabel: document.querySelector("#eyeFrequencyLabel"),
+    mouthFrequencyValue: document.querySelector("#mouthFrequencyValue"),
+    eyeFrequencyValue: document.querySelector("#eyeFrequencyValue"),
+    delayValue: document.querySelector("#delayValue"),
+    showOverlay: document.querySelector("#showOverlay"),
+    cameraResolution: document.querySelector("#cameraResolution"),
+    resolutionValue: document.querySelector("#resolutionValue"),
+  };
+
+  const meters = {
+    mouthOpen: bindMeter("mouthOpen"),
+    eyeOpen: bindMeter("eyeOpen"),
+    mouthVolume: bindMeter("mouthVolume"),
+    eyeVolume: bindMeter("eyeVolume"),
+  };
+
+  return {
+    onStart(handler) {
+      elements.startButton.addEventListener("click", handler);
+    },
+
+    onStop(handler) {
+      elements.stopButton.addEventListener("click", handler);
+    },
+
+    onFrequencyChange(handler) {
+      elements.mouthFrequency.addEventListener("input", handler);
+      elements.eyeFrequency.addEventListener("input", handler);
+    },
+
+    onDelayChange(handler) {
+      elements.dataDelay.addEventListener("input", handler);
+    },
+
+    onOverlayChange(handler) {
+      elements.showOverlay.addEventListener("change", handler);
+    },
+
+    onResolutionChange(handler) {
+      elements.cameraResolution.addEventListener("change", handler);
+    },
+
+    getSettings() {
+      return {
+        thresholds: {
+          mouth: Number(elements.mouthThreshold.value),
+          eyeOpen: Number(elements.eyeOpenThreshold.value),
+        },
+        mouthFrequency: Number(elements.mouthFrequency.value),
+        eyeFrequency: Number(elements.eyeFrequency.value),
+        delaySeconds: Number(elements.dataDelay.value),
+        showOverlay: elements.showOverlay.checked,
+        resolution: getResolutionPreset(elements.cameraResolution.value),
+      };
+    },
+
+    setReady() {
+      elements.loading.hidden = true;
+      elements.startButton.disabled = false;
+      this.setStatus("Ready.");
+    },
+
+    setStarting() {
+      elements.startButton.disabled = true;
+      this.setStatus("Starting camera...");
+    },
+
+    setRunning() {
+      elements.stopButton.disabled = false;
+      this.setStatus("Tracking face.");
+    },
+
+    setStopped() {
+      elements.startButton.disabled = false;
+      elements.stopButton.disabled = true;
+      this.setStatus("Stopped.");
+    },
+
+    setStartFailed(message) {
+      elements.startButton.disabled = false;
+      elements.stopButton.disabled = true;
+      this.setStatus(message);
+    },
+
+    setLoadFailed(message) {
+      elements.loading.textContent = "MediaPipe failed to load.";
+      this.setStatus(message);
+    },
+
+    setStatus(message) {
+      elements.status.textContent = message;
+    },
+
+    updateFrequencyLabels() {
+      const { mouthFrequency, eyeFrequency } = this.getSettings();
+      elements.mouthFrequencyLabel.textContent = `${mouthFrequency} Hz`;
+      elements.eyeFrequencyLabel.textContent = `${eyeFrequency} Hz`;
+      elements.mouthFrequencyValue.value = `${mouthFrequency} Hz`;
+      elements.eyeFrequencyValue.value = `${eyeFrequency} Hz`;
+    },
+
+    updateDelayLabel() {
+      elements.delayValue.value = `${this.getSettings().delaySeconds.toFixed(2)} s`;
+    },
+
+    updateResolutionLabel() {
+      elements.resolutionValue.value = this.getSettings().resolution.label;
+    },
+
+    updateMeters({ mouthOpen, eyeOpen, mouthVolume, eyeVolume }) {
+      setMeter(meters.mouthOpen, mouthOpen);
+      setMeter(meters.eyeOpen, eyeOpen);
+      setMeter(meters.mouthVolume, mouthVolume);
+      setMeter(meters.eyeVolume, eyeVolume);
+    },
+  };
+}
+
+function bindMeter(name) {
+  return {
+    meter: document.querySelector(`#${name}Meter`),
+    value: document.querySelector(`#${name}Value`),
+  };
+}
+
+function setMeter(binding, value) {
+  const clamped = clamp(value);
+  binding.meter.value = clamped;
+  binding.value.value = clamped.toFixed(2);
+}
