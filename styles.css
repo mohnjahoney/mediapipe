@@ -15,7 +15,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -168,6 +169,21 @@ details label {
   gap: 8px;
   margin-top: 14px;
   color: #c7cfdd;
+}
+
+.checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+select {
+  min-height: 36px;
+  border: 1px solid #3a4152;
+  border-radius: 6px;
+  background: #171a22;
+  color: #f2f4f8;
+  padding: 0 10px;
 }
 
 @media (max-width: 820px) {

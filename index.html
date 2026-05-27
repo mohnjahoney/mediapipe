@@ -75,10 +75,22 @@
             Data delay <output id="delayValue">0.00 s</output>
             <input id="dataDelay" type="range" min="0" max="2" step="0.01" value="0">
           </label>
+          <label class="checkbox-label">
+            <input id="showOverlay" type="checkbox" checked>
+            Show landmark overlay
+          </label>
+          <label>
+            Camera resolution <output id="resolutionValue">Full</output>
+            <select id="cameraResolution">
+              <option value="full">Full</option>
+              <option value="half">Half</option>
+              <option value="quarter">Quarter</option>
+            </select>
+          </label>
         </details>
       </section>
     </main>
 
-    <script type="module" src="app.js?v=2026-05-26-delay-controls"></script>
+    <script type="module" src="app.js?v=2026-05-26-performance-controls"></script>
   </body>
 </html>

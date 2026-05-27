@@ -24,6 +24,15 @@ const eyeFrequencyLabel = document.querySelector("#eyeFrequencyLabel");
 const mouthFrequencyValue = document.querySelector("#mouthFrequencyValue");
 const eyeFrequencyValue = document.querySelector("#eyeFrequencyValue");
 const delayValue = document.querySelector("#delayValue");
+const showOverlayInput = document.querySelector("#showOverlay");
+const cameraResolutionInput = document.querySelector("#cameraResolution");
+const resolutionValue = document.querySelector("#resolutionValue");
+
+const RESOLUTION_PRESETS = {
+  full: { label: "Full", width: 1280, height: 720 },
+  half: { label: "Half", width: 640, height: 360 },
+  quarter: { label: "Quarter", width: 320, height: 180 },
+};
 
 const meters = {
   mouthOpen: bindMeter("mouthOpen"),
@@ -46,10 +55,14 @@ stopButton.addEventListener("click", stop);
 mouthFrequencyInput.addEventListener("input", updateFrequencyControls);
 eyeFrequencyInput.addEventListener("input", updateFrequencyControls);
 dataDelayInput.addEventListener("input", updateDelayControl);
+showOverlayInput.addEventListener("change", updateOverlayControl);
+cameraResolutionInput.addEventListener("change", updateResolutionControl);
 
 initMediaPipe();
 updateFrequencyControls();
 updateDelayControl();
+updateOverlayControl();
+updateResolutionControl();
 
 async function initMediaPipe() {
   try {
@@ -82,11 +95,12 @@ async function start() {
       return;
     }
 
+    const resolution = getSelectedResolution();
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: resolution.width },
+        height: { ideal: resolution.height },
       },
       audio: false,
     });
@@ -148,7 +162,9 @@ function runFrame() {
   if (landmarks) {
     const measurements = measureFace(landmarks);
     updateSignals(measurements);
-    drawDebug(landmarks);
+    if (showOverlayInput.checked) {
+      drawDebug(landmarks);
+    }
     setStatus("Tracking face.");
   } else {
     updateSignals({ mouthOpen: 0, eyeOpen: 1 });
@@ -254,6 +270,20 @@ function updateFrequencyControls() {
 
 function updateDelayControl() {
   delayValue.value = `${Number(dataDelayInput.value).toFixed(2)} s`;
+}
+
+function updateOverlayControl() {
+  if (!showOverlayInput.checked) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function updateResolutionControl() {
+  resolutionValue.value = getSelectedResolution().label;
+}
+
+function getSelectedResolution() {
+  return RESOLUTION_PRESETS[cameraResolutionInput.value] ?? RESOLUTION_PRESETS.full;
 }
 
 function drawDebug(landmarks) {
