@@ -123,7 +123,7 @@ function mapSignalsToVolumes(rawSignals, settings) {
   }
 
   return {
-    mouthVolume: mouthVolume >= 0.5 ? 1 : 0,
-    eyeVolume: eyeVolume >= 0.5 ? 1 : 0,
+    mouthVolume: mouthVolume > 0 ? 1 : 0,
+    eyeVolume: eyeVolume > 0 ? 1 : 0,
   };
 }
