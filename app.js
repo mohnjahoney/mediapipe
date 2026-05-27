@@ -16,7 +16,14 @@ const stopButton = document.querySelector("#stopButton");
 const statusEl = document.querySelector("#status");
 const mouthThresholdInput = document.querySelector("#mouthThreshold");
 const eyeOpenThresholdInput = document.querySelector("#eyeOpenThreshold");
-const smoothingInput = document.querySelector("#smoothing");
+const mouthFrequencyInput = document.querySelector("#mouthFrequency");
+const eyeFrequencyInput = document.querySelector("#eyeFrequency");
+const dataDelayInput = document.querySelector("#dataDelay");
+const mouthFrequencyLabel = document.querySelector("#mouthFrequencyLabel");
+const eyeFrequencyLabel = document.querySelector("#eyeFrequencyLabel");
+const mouthFrequencyValue = document.querySelector("#mouthFrequencyValue");
+const eyeFrequencyValue = document.querySelector("#eyeFrequencyValue");
+const delayValue = document.querySelector("#delayValue");
 
 const meters = {
   mouthOpen: bindMeter("mouthOpen"),
@@ -32,15 +39,17 @@ let faceLandmarker;
 let stream;
 let animationFrameId = 0;
 let audio;
-let smoothedMouthVolume = 0;
-let smoothedEyeVolume = 0;
-let smoothedMouthOpen = 0;
-let smoothedEyeOpen = 0;
+let signalHistory = [];
 
 startButton.addEventListener("click", start);
 stopButton.addEventListener("click", stop);
+mouthFrequencyInput.addEventListener("input", updateFrequencyControls);
+eyeFrequencyInput.addEventListener("input", updateFrequencyControls);
+dataDelayInput.addEventListener("input", updateDelayControl);
 
 initMediaPipe();
+updateFrequencyControls();
+updateDelayControl();
 
 async function initMediaPipe() {
   try {
@@ -121,6 +130,7 @@ function stop() {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   video.srcObject = null;
+  signalHistory = [];
   startButton.disabled = false;
   stopButton.disabled = true;
   setStatus("Stopped.");
@@ -173,28 +183,34 @@ function measureFace(landmarks) {
 }
 
 function updateSignals({ mouthOpen, eyeOpen }) {
-  const smoothing = Number(smoothingInput.value);
-  const targetMouthVolume = mouthOpen;
-  const targetEyeVolume = 1 - eyeOpen;
+  const nowMs = performance.now();
+  const delayMs = Number(dataDelayInput.value) * 1000;
+  signalHistory.push({ time: nowMs, mouthOpen, eyeOpen });
+  signalHistory = signalHistory.filter((sample) => sample.time >= nowMs - 2500);
 
-  smoothedMouthOpen = lerp(smoothedMouthOpen, mouthOpen, smoothing);
-  smoothedEyeOpen = lerp(smoothedEyeOpen, eyeOpen, smoothing);
-  smoothedMouthVolume = lerp(smoothedMouthVolume, targetMouthVolume, smoothing);
-  smoothedEyeVolume = lerp(smoothedEyeVolume, targetEyeVolume, smoothing);
+  const delayedSample = getDelayedSample(nowMs - delayMs) ?? { mouthOpen, eyeOpen };
+  const mouthVolume = delayedSample.mouthOpen;
+  const eyeVolume = 1 - delayedSample.eyeOpen;
 
   if (audio) {
     const now = audio.context.currentTime;
-    audio.mouthGain.gain.setTargetAtTime(smoothedMouthVolume * 0.16, now, 0.035);
-    audio.eyeGain.gain.setTargetAtTime(smoothedEyeVolume * 0.12, now, 0.035);
+    audio.mouthGain.gain.setValueAtTime(mouthVolume * 0.16, now);
+    audio.eyeGain.gain.setValueAtTime(eyeVolume * 0.12, now);
   }
 
-  updateMeters(smoothedMouthOpen, smoothedEyeOpen, smoothedMouthVolume, smoothedEyeVolume);
+  updateMeters(mouthOpen, eyeOpen, mouthVolume, eyeVolume);
 }
 
 function createAudio() {
   const context = new AudioContext();
-  const mouthOsc = new OscillatorNode(context, { frequency: 880, type: "square" });
-  const eyeOsc = new OscillatorNode(context, { frequency: 2000, type: "sine" });
+  const mouthOsc = new OscillatorNode(context, {
+    frequency: Number(mouthFrequencyInput.value),
+    type: "square",
+  });
+  const eyeOsc = new OscillatorNode(context, {
+    frequency: Number(eyeFrequencyInput.value),
+    type: "sine",
+  });
   const mouthGain = new GainNode(context, { gain: 0 });
   const eyeGain = new GainNode(context, { gain: 0 });
   const masterGain = new GainNode(context, { gain: 0.85 });
@@ -208,6 +224,36 @@ function createAudio() {
   eyeOsc.start();
 
   return { context, mouthOsc, eyeOsc, mouthGain, eyeGain };
+}
+
+function getDelayedSample(targetTime) {
+  for (let index = signalHistory.length - 1; index >= 0; index -= 1) {
+    if (signalHistory[index].time <= targetTime) {
+      return signalHistory[index];
+    }
+  }
+
+  return signalHistory[0];
+}
+
+function updateFrequencyControls() {
+  const mouthFrequency = Number(mouthFrequencyInput.value);
+  const eyeFrequency = Number(eyeFrequencyInput.value);
+
+  mouthFrequencyLabel.textContent = `${mouthFrequency} Hz`;
+  eyeFrequencyLabel.textContent = `${eyeFrequency} Hz`;
+  mouthFrequencyValue.value = `${mouthFrequency} Hz`;
+  eyeFrequencyValue.value = `${eyeFrequency} Hz`;
+
+  if (audio) {
+    const now = audio.context.currentTime;
+    audio.mouthOsc.frequency.setValueAtTime(mouthFrequency, now);
+    audio.eyeOsc.frequency.setValueAtTime(eyeFrequency, now);
+  }
+}
+
+function updateDelayControl() {
+  delayValue.value = `${Number(dataDelayInput.value).toFixed(2)} s`;
 }
 
 function drawDebug(landmarks) {
@@ -269,10 +315,6 @@ function normalize(value, low, high) {
 
 function clamp(value) {
   return Math.min(1, Math.max(0, value));
-}
-
-function lerp(from, to, amount) {
-  return from + (to - from) * amount;
 }
 
 function setStatus(message) {

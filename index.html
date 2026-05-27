@@ -64,8 +64,16 @@
             <input id="eyeOpenThreshold" type="range" min="0.08" max="0.35" step="0.01" value="0.21">
           </label>
           <label>
-            Smoothing
-            <input id="smoothing" type="range" min="0.02" max="0.35" step="0.01" value="0.16">
+            Mouth pitch <output id="mouthFrequencyValue">880 Hz</output>
+            <input id="mouthFrequency" type="range" min="10" max="5000" step="1" value="880">
+          </label>
+          <label>
+            Eye pitch <output id="eyeFrequencyValue">2000 Hz</output>
+            <input id="eyeFrequency" type="range" min="10" max="5000" step="1" value="2000">
+          </label>
+          <label>
+            Data delay <output id="delayValue">0.00 s</output>
+            <input id="dataDelay" type="range" min="0" max="2" step="0.01" value="0">
           </label>
         </details>
       </section>
