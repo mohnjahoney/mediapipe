@@ -118,6 +118,13 @@ button:disabled {
   color: #dce2ef;
 }
 
+.meter strong {
+  color: #8db7ff;
+  font-size: 0.9em;
+  font-weight: 650;
+  margin-left: 6px;
+}
+
 progress {
   grid-column: 1 / -1;
   width: 100%;
