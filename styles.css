@@ -46,8 +46,17 @@ canvas {
   transform: scaleX(-1);
 }
 
+video {
+  z-index: 0;
+}
+
 canvas {
   pointer-events: none;
+  z-index: 1;
+}
+
+.three-overlay {
+  z-index: 2;
 }
 
 .loading {
@@ -58,6 +67,7 @@ canvas {
   border-radius: 6px;
   background: rgba(5, 6, 8, 0.82);
   color: #dce2ef;
+  z-index: 4;
 }
 
 .controls {
@@ -206,6 +216,21 @@ select {
 
 .project-ariadne .stage {
   min-height: calc(100vh - 76px);
+}
+
+.ariadne-render-control {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(5, 6, 8, 0.76);
+  color: #dce2ef;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 820px) {

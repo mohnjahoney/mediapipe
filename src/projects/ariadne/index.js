@@ -2,6 +2,7 @@ import { getResolutionPreset, startCamera, stopCamera } from "../../core/camera.
 import { createHandTracker } from "../../media/hand-tracker.js";
 import { createOverlay } from "../../visuals/overlay.js";
 import { createMedianHandSmoother } from "./median-hand-smoother.js";
+import { createThreeContactRenderer } from "./three-contact-renderer.js";
 
 const THUMB_TIP = 4;
 const MIDDLE_TIP = 12;
@@ -16,8 +17,16 @@ const Z_SIZE_SCALE_FACTOR = 10;
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
   const handSmoother = createMedianHandSmoother({ windowSize: 5 });
+  const stage = canvas.closest(".stage");
+  const renderControl = createRenderControl(stage);
+  const threeContactRenderer = createThreeContactRenderer({
+    stage,
+    video,
+    radiusForPoint: contactPointRadius,
+  });
   const loading = document.querySelector("#loading");
   const controls = document.querySelector(".controls");
+  let renderMode = renderControl.value;
   let handTracker;
   let stream;
   let animationFrameId = 0;
@@ -30,6 +39,8 @@ export function createAriadneProject({ video, canvas }) {
     async start() {
       document.body.classList.add("project-ariadne");
       controls.hidden = true;
+      renderControl.element.hidden = false;
+      renderControl.element.addEventListener("change", handleRenderModeChange);
       loading.textContent = "Loading Ariadne...";
 
       try {
@@ -52,6 +63,9 @@ export function createAriadneProject({ video, canvas }) {
       thumbMiddleFinalContactPoint = null;
       thumbMiddleContactSegments.length = 0;
       handSmoother.reset();
+      renderControl.element.removeEventListener("change", handleRenderModeChange);
+      renderControl.element.remove();
+      threeContactRenderer.dispose();
       overlay.clear();
     },
   };
@@ -67,9 +81,7 @@ export function createAriadneProject({ video, canvas }) {
     updateThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
     drawThumbMiddleEndpointGuides(hands);
-    drawThumbMiddleContactSegmentLines();
-    drawThumbMiddleLiveContactLine();
-    drawThumbMiddleContactDots();
+    renderContactVisuals();
 
     animationFrameId = requestAnimationFrame(runFrame);
   }
@@ -123,16 +135,10 @@ export function createAriadneProject({ video, canvas }) {
       });
     }
 
-    if (thumbMiddleInitialContactPoint) {
+    if (thumbMiddleContactPoint && thumbMiddleInitialContactPoint) {
       overlay.drawPoint(thumbMiddleInitialContactPoint, {
         color: "#26d96c",
         radius: contactPointRadius(thumbMiddleInitialContactPoint),
-      });
-    }
-    if (thumbMiddleFinalContactPoint) {
-      overlay.drawPoint(thumbMiddleFinalContactPoint, {
-        color: "#ff3333",
-        radius: contactPointRadius(thumbMiddleFinalContactPoint),
       });
     }
     if (thumbMiddleContactPoint) {
@@ -141,6 +147,26 @@ export function createAriadneProject({ video, canvas }) {
         radius: contactPointRadius(thumbMiddleContactPoint),
       });
     }
+  }
+
+  function renderContactVisuals() {
+    const state = {
+      segments: thumbMiddleContactSegments,
+      initial: thumbMiddleContactPoint ? thumbMiddleInitialContactPoint : null,
+      final: null,
+      live: thumbMiddleContactPoint,
+    };
+
+    if (renderMode === "three") {
+      threeContactRenderer.setEnabled(true);
+      threeContactRenderer.render(state);
+      return;
+    }
+
+    threeContactRenderer.setEnabled(false);
+    drawThumbMiddleContactSegmentLines();
+    drawThumbMiddleLiveContactLine();
+    drawThumbMiddleContactDots();
   }
 
   function updateThumbMiddleContactPoint(hands) {
@@ -159,6 +185,33 @@ export function createAriadneProject({ video, canvas }) {
 
     thumbMiddleContactPoint = nextContactPoint;
   }
+
+  function handleRenderModeChange() {
+    renderMode = renderControl.value;
+  }
+}
+
+function createRenderControl(stage) {
+  const label = document.createElement("label");
+  const select = document.createElement("select");
+
+  label.className = "ariadne-render-control";
+  label.textContent = "Render";
+  label.hidden = true;
+
+  select.innerHTML = `
+    <option value="canvas">2D Canvas</option>
+    <option value="three">3D Three.js</option>
+  `;
+  label.append(select);
+  stage.append(label);
+
+  return {
+    element: label,
+    get value() {
+      return select.value;
+    },
+  };
 }
 
 function getThumbMiddleContactPoint(hands) {
