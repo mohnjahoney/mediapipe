@@ -4,9 +4,9 @@ import { createHandTracker } from "../../media/hand-tracker.js";
 import { createMedianHandSmoother } from "../ariadne/median-hand-smoother.js";
 import { createOverlay } from "../../visuals/overlay.js";
 
-const MAX_BRUSH_RADIUS = 100;
-const BRUSH_BASE_THRESHOLD = 0.06;
-const BRUSH_DISTANCE_RANGE = 0.22;
+const MAX_BRUSH_RADIUS = 400;
+const BRUSH_BASE_THRESHOLD = 0.025;
+const BRUSH_DISTANCE_RANGE = 0.24;
 const MIN_Z_SIZE_SCALE = 0.6;
 const MAX_Z_SIZE_SCALE = 2.4;
 const Z_SIZE_SCALE_FACTOR = 10;
@@ -25,6 +25,7 @@ const HAND_COLOR_CONTROLS = {
   red: {
     tip: HAND_JOINTS.thumbTip,
     reference: HAND_JOINTS.thumbMcp,
+    insideReference: HAND_JOINTS.indexFingerMcp,
     chain: [HAND_JOINTS.thumbMcp, HAND_JOINTS.thumbIp, HAND_JOINTS.thumbTip],
   },
   green: {
@@ -257,7 +258,7 @@ export function createDrawingProject({ video, canvas }) {
   }
 
   function colorFromHand(landmarks) {
-    const red = fingerExtension(landmarks, HAND_COLOR_CONTROLS.red);
+    const red = thumbHorizontalExtension(landmarks, HAND_COLOR_CONTROLS.red);
     const green = fingerExtension(landmarks, HAND_COLOR_CONTROLS.green);
     const blue = fingerExtension(landmarks, HAND_COLOR_CONTROLS.blue);
     const alpha = fingerExtension(landmarks, HAND_COLOR_CONTROLS.alpha);
@@ -479,6 +480,21 @@ function fingerExtension(landmarks, control) {
   const extension = normalizedDistance(wrist, tip) - normalizedDistance(wrist, reference);
 
   return clamp(extension / chainLength, 0, 1);
+}
+
+function thumbHorizontalExtension(landmarks, control) {
+  const tip = landmarks[control.tip];
+  const reference = landmarks[control.reference];
+  const insideReference = landmarks[control.insideReference];
+  const chainLength = fingerChainLength(landmarks, control.chain);
+
+  if (!tip || !reference || !insideReference || chainLength <= 0) return 0;
+
+  const insideDirection = Math.sign(insideReference.x - reference.x);
+  const outwardDirection = insideDirection === 0 ? 1 : -insideDirection;
+  const horizontalExtension = (tip.x - reference.x) * outwardDirection;
+
+  return clamp(horizontalExtension / chainLength, 0, 1);
 }
 
 function fingerChainLength(landmarks, joints) {
