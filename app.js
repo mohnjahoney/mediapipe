@@ -1,4 +1,5 @@
 import { createFaceAudioInstrumentProject } from "./src/projects/face-audio-instrument/index.js";
+import { createAriadneProject } from "./src/projects/ariadne/index.js";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");
@@ -6,6 +7,7 @@ const projectSelector = document.querySelector("#projectSelector");
 
 const projects = {
   "face-audio-instrument": createFaceAudioInstrumentProject,
+  ariadne: createAriadneProject,
 };
 
 const projectId = location.hash.slice(1) || "face-audio-instrument";
