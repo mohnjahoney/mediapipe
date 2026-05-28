@@ -13,6 +13,7 @@ const Z_SIZE_SCALE_FACTOR = 10;
 const FINGER_COLOR_EXTENSION_MIN = 0.5;
 const FINGER_COLOR_EXTENSION_MAX = 1;
 const THUMB_RED_EXTENSION_MAX = 0.65;
+const CALIBRATION_SAMPLE_COUNT = 18;
 
 const PALETTE_COLORS = [
   "#ff3b30",
@@ -48,6 +49,35 @@ const HAND_COLOR_CONTROLS = {
   },
 };
 
+const DEFAULT_HAND_COLOR_RANGES = {
+  alpha: { min: FINGER_COLOR_EXTENSION_MIN, max: FINGER_COLOR_EXTENSION_MAX },
+  blue: { min: FINGER_COLOR_EXTENSION_MIN, max: FINGER_COLOR_EXTENSION_MAX },
+  green: { min: FINGER_COLOR_EXTENSION_MIN, max: FINGER_COLOR_EXTENSION_MAX },
+  red: { min: 0, max: THUMB_RED_EXTENSION_MAX },
+};
+
+const HAND_COLOR_MEASUREMENTS = {
+  alpha: { type: "fingerExtension", control: HAND_COLOR_CONTROLS.alpha },
+  blue: { type: "fingerExtension", control: HAND_COLOR_CONTROLS.blue },
+  green: { type: "fingerExtension", control: HAND_COLOR_CONTROLS.green },
+  red: { type: "thumbHorizontalExtension", control: HAND_COLOR_CONTROLS.red },
+};
+
+const HAND_COLOR_CALIBRATION_STEPS = [
+  {
+    id: "zero",
+    label: "RGBA Zero Pose",
+    instruction: "Left hand: thumb inward, index/middle/pinky halfway curled.",
+    useAs: "min",
+  },
+  {
+    id: "open",
+    label: "Fully Open Hand",
+    instruction: "Left hand: open fingers and thumb as far as comfortable.",
+    useAs: "max",
+  },
+];
+
 export function createDrawingProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
   const stage = canvas.closest(".stage");
@@ -65,6 +95,8 @@ export function createDrawingProject({ video, canvas }) {
   let currentColor = PALETTE_COLORS[3];
   let isDrawing = false;
   let lastDrawPoint = null;
+  let handColorRanges = cloneColorRanges(DEFAULT_HAND_COLOR_RANGES);
+  let calibration = null;
 
   drawingCanvas.className = "drawing-canvas";
   stage.append(drawingCanvas);
@@ -77,6 +109,7 @@ export function createDrawingProject({ video, canvas }) {
       panel.element.hidden = false;
       panel.element.addEventListener("change", handlePanelChange);
       panel.clearButton.addEventListener("click", clearDrawing);
+      panel.calibrateButton.addEventListener("click", handleCalibrationButton);
       loading.textContent = "Loading Drawing...";
 
       try {
@@ -98,6 +131,7 @@ export function createDrawingProject({ video, canvas }) {
       stream = null;
       panel.element.removeEventListener("change", handlePanelChange);
       panel.clearButton.removeEventListener("click", clearDrawing);
+      panel.calibrateButton.removeEventListener("click", handleCalibrationButton);
       panel.element.remove();
       drawingCanvas.remove();
       overlay.clear();
@@ -121,6 +155,7 @@ export function createDrawingProject({ video, canvas }) {
 
     overlay.drawHands(hands.map((hand) => hand.landmarks));
 
+    updateCalibration(leftHand?.landmarks);
     const isPickingColor = updateColor(leftHand?.landmarks, rightHand?.landmarks);
     updateDrawing(rightHand?.landmarks, isPickingColor);
 
@@ -261,10 +296,11 @@ export function createDrawingProject({ video, canvas }) {
   }
 
   function colorFromHand(landmarks) {
-    const red = thumbHorizontalExtension(landmarks, HAND_COLOR_CONTROLS.red);
-    const green = fingerExtension(landmarks, HAND_COLOR_CONTROLS.green);
-    const blue = fingerExtension(landmarks, HAND_COLOR_CONTROLS.blue);
-    const alpha = fingerExtension(landmarks, HAND_COLOR_CONTROLS.alpha);
+    const raw = handColorMeasurements(landmarks);
+    const red = calibratedSignal(raw.red, handColorRanges.red);
+    const green = calibratedSignal(raw.green, handColorRanges.green);
+    const blue = calibratedSignal(raw.blue, handColorRanges.blue);
+    const alpha = calibratedSignal(raw.alpha, handColorRanges.alpha);
     const rgba = {
       alpha,
       blue: Math.round(blue * 255),
@@ -387,6 +423,81 @@ export function createDrawingProject({ video, canvas }) {
     endStroke();
   }
 
+  function handleCalibrationButton() {
+    if (!calibration) {
+      startCalibration();
+      return;
+    }
+
+    if (calibration.isCapturing) return;
+
+    calibration.isCapturing = true;
+    calibration.samples = [];
+    panel.calibrateButton.disabled = true;
+  }
+
+  function startCalibration() {
+    const step = HAND_COLOR_CALIBRATION_STEPS[0];
+
+    calibration = {
+      isCapturing: false,
+      samples: [],
+      stepIndex: 0,
+      values: cloneColorRanges(DEFAULT_HAND_COLOR_RANGES),
+    };
+    panel.setCalibrationStatus(calibrationMessage());
+    panel.calibrateButton.textContent = `Capture ${step.label}`;
+  }
+
+  function updateCalibration(leftHandLandmarks) {
+    if (!calibration) return;
+
+    const step = HAND_COLOR_CALIBRATION_STEPS[calibration.stepIndex];
+
+    if (!calibration.isCapturing) return;
+
+    if (!leftHandLandmarks) {
+      panel.setCalibrationStatus(`${step.label}: show your left hand.`);
+      calibration.isCapturing = false;
+      calibration.samples = [];
+      panel.calibrateButton.disabled = false;
+      return;
+    }
+
+    calibration.samples.push(handColorMeasurements(leftHandLandmarks));
+    panel.setCalibrationStatus(`${step.label}: ${calibration.samples.length}/${CALIBRATION_SAMPLE_COUNT} samples`);
+
+    if (calibration.samples.length < CALIBRATION_SAMPLE_COUNT) return;
+
+    const sample = averageCalibrationSamples(calibration.samples);
+    for (const channel of Object.keys(DEFAULT_HAND_COLOR_RANGES)) {
+      calibration.values[channel][step.useAs] = sample[channel];
+    }
+
+    calibration.stepIndex += 1;
+    calibration.samples = [];
+
+    if (calibration.stepIndex < HAND_COLOR_CALIBRATION_STEPS.length) {
+      const nextStep = HAND_COLOR_CALIBRATION_STEPS[calibration.stepIndex];
+      calibration.isCapturing = false;
+      panel.calibrateButton.disabled = false;
+      panel.calibrateButton.textContent = `Capture ${nextStep.label}`;
+      panel.setCalibrationStatus(calibrationMessage());
+      return;
+    }
+
+    handColorRanges = normalizeCalibrationRanges(calibration.values);
+    calibration = null;
+    panel.calibrateButton.disabled = false;
+    panel.calibrateButton.textContent = "Calibrate Hand";
+    panel.setCalibrationStatus("Calibration saved.");
+  }
+
+  function calibrationMessage() {
+    const step = HAND_COLOR_CALIBRATION_STEPS[calibration.stepIndex];
+    return `${step.label}: ${step.instruction}`;
+  }
+
   function endStroke() {
     isDrawing = false;
     lastDrawPoint = null;
@@ -404,6 +515,8 @@ function createDrawingPanel(stage) {
   const colorSwatch = document.createElement("span");
   const radiusValue = document.createElement("span");
   const colorValues = document.createElement("span");
+  const calibrationStatus = document.createElement("span");
+  const calibrateButton = document.createElement("button");
   const clearButton = document.createElement("button");
 
   element.className = "drawing-control";
@@ -415,13 +528,28 @@ function createDrawingPanel(stage) {
   colorSwatch.className = "drawing-current-color";
   colorValues.className = "drawing-color-values";
   colorValues.textContent = "Swatches";
+  calibrationStatus.className = "drawing-calibration-status";
+  calibrationStatus.textContent = "Calibration: default";
   radiusValue.textContent = "Radius 0";
+  calibrateButton.type = "button";
+  calibrateButton.textContent = "Calibrate Hand";
   clearButton.type = "button";
   clearButton.textContent = "Clear Screen";
-  element.append("Palette", paletteSelect, "Color", colorSwatch, colorValues, radiusValue, clearButton);
+  element.append(
+    "Palette",
+    paletteSelect,
+    "Color",
+    colorSwatch,
+    colorValues,
+    radiusValue,
+    calibrationStatus,
+    calibrateButton,
+    clearButton
+  );
   stage.append(element);
 
   return {
+    calibrateButton,
     clearButton,
     element,
     get paletteMode() {
@@ -434,6 +562,9 @@ function createDrawingPanel(stage) {
       colorValues.textContent = color
         ? `R ${color.red}  G ${color.green}  B ${color.blue}  A ${color.alpha.toFixed(2)}`
         : "Swatches";
+    },
+    setCalibrationStatus(message) {
+      calibrationStatus.textContent = message;
     },
     setRadius(radius) {
       radiusValue.textContent = `Radius ${Math.round(radius)}`;
@@ -472,7 +603,28 @@ function midpoint(a, b) {
   };
 }
 
-function fingerExtension(landmarks, control) {
+function handColorMeasurements(landmarks) {
+  return Object.fromEntries(
+    Object.entries(HAND_COLOR_MEASUREMENTS).map(([channel, measurement]) => [
+      channel,
+      evaluateHandMeasurement(landmarks, measurement),
+    ])
+  );
+}
+
+function evaluateHandMeasurement(landmarks, measurement) {
+  if (measurement.type === "fingerExtension") {
+    return rawFingerExtension(landmarks, measurement.control);
+  }
+
+  if (measurement.type === "thumbHorizontalExtension") {
+    return rawThumbHorizontalExtension(landmarks, measurement.control);
+  }
+
+  return 0;
+}
+
+function rawFingerExtension(landmarks, control) {
   const wrist = landmarks[HAND_JOINTS.wrist];
   const tip = landmarks[control.tip];
   const reference = landmarks[control.reference];
@@ -481,12 +633,11 @@ function fingerExtension(landmarks, control) {
   if (!wrist || !tip || !reference || chainLength <= 0) return 0;
 
   const extension = normalizedDistance(wrist, tip) - normalizedDistance(wrist, reference);
-  const rawExtension = clamp(extension / chainLength, 0, 1);
 
-  return mapRangeClamped(rawExtension, FINGER_COLOR_EXTENSION_MIN, FINGER_COLOR_EXTENSION_MAX, 0, 1);
+  return clamp(extension / chainLength, 0, 1);
 }
 
-function thumbHorizontalExtension(landmarks, control) {
+function rawThumbHorizontalExtension(landmarks, control) {
   const tip = landmarks[control.tip];
   const reference = landmarks[control.reference];
   const insideReference = landmarks[control.insideReference];
@@ -497,9 +648,56 @@ function thumbHorizontalExtension(landmarks, control) {
   const insideDirection = Math.sign(insideReference.x - reference.x);
   const outwardDirection = insideDirection === 0 ? 1 : -insideDirection;
   const horizontalExtension = (tip.x - reference.x) * outwardDirection;
-  const rawExtension = clamp(horizontalExtension / chainLength, 0, 1);
 
-  return mapRangeClamped(rawExtension, 0, THUMB_RED_EXTENSION_MAX, 0, 1);
+  return clamp(horizontalExtension / chainLength, 0, 1);
+}
+
+function calibratedSignal(value, range) {
+  return mapRangeClamped(value, range.min, range.max, 0, 1);
+}
+
+function averageCalibrationSamples(samples) {
+  const total = samples.reduce(
+    (sum, sample) => ({
+      alpha: sum.alpha + sample.alpha,
+      blue: sum.blue + sample.blue,
+      green: sum.green + sample.green,
+      red: sum.red + sample.red,
+    }),
+    { alpha: 0, blue: 0, green: 0, red: 0 }
+  );
+
+  return {
+    alpha: total.alpha / samples.length,
+    blue: total.blue / samples.length,
+    green: total.green / samples.length,
+    red: total.red / samples.length,
+  };
+}
+
+function normalizeCalibrationRanges(ranges) {
+  const normalized = cloneColorRanges(ranges);
+
+  for (const channel of Object.keys(normalized)) {
+    const range = normalized[channel];
+    if (range.max < range.min) {
+      const previousMin = range.min;
+      range.min = range.max;
+      range.max = previousMin;
+    }
+
+    if (range.max - range.min < 0.05) {
+      range.max = clamp(range.min + 0.05, 0.05, 1);
+    }
+  }
+
+  return normalized;
+}
+
+function cloneColorRanges(ranges) {
+  return Object.fromEntries(
+    Object.entries(ranges).map(([channel, range]) => [channel, { min: range.min, max: range.max }])
+  );
 }
 
 function fingerChainLength(landmarks, joints) {

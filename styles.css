@@ -274,9 +274,15 @@ select {
   border-radius: 999px;
 }
 
-.drawing-color-values {
+.drawing-color-values,
+.drawing-calibration-status {
   grid-column: 1 / -1;
   font-variant-numeric: tabular-nums;
+}
+
+.drawing-calibration-status {
+  max-width: 260px;
+  color: #aeb8ca;
 }
 
 .drawing-control button {
