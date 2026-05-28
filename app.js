@@ -1,5 +1,5 @@
 import { createFaceAudioInstrumentProject } from "./src/projects/face-audio-instrument/index.js";
-import { createAriadneProject } from "./src/projects/ariadne/index.js?v=2026-05-28-z-scale";
+import { createAriadneProject } from "./src/projects/ariadne/index.js?v=2026-05-28-hand-smoother";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");

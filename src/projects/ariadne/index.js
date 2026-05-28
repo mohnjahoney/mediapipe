@@ -1,6 +1,7 @@
 import { getResolutionPreset, startCamera, stopCamera } from "../../core/camera.js";
 import { createHandTracker } from "../../media/hand-tracker.js";
 import { createOverlay } from "../../visuals/overlay.js";
+import { createMedianHandSmoother } from "./median-hand-smoother.js";
 
 const THUMB_TIP = 4;
 const MIDDLE_TIP = 12;
@@ -14,6 +15,7 @@ const Z_SIZE_SCALE_FACTOR = 10;
 
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
+  const handSmoother = createMedianHandSmoother({ windowSize: 5 });
   const loading = document.querySelector("#loading");
   const controls = document.querySelector(".controls");
   let handTracker;
@@ -49,6 +51,7 @@ export function createAriadneProject({ video, canvas }) {
       thumbMiddleInitialContactPoint = null;
       thumbMiddleFinalContactPoint = null;
       thumbMiddleContactSegments.length = 0;
+      handSmoother.reset();
       overlay.clear();
     },
   };
@@ -59,7 +62,8 @@ export function createAriadneProject({ video, canvas }) {
     overlay.resizeToVideo(video);
     overlay.clear();
 
-    const hands = handTracker.detect(video);
+    const rawHands = handTracker.detect(video);
+    const hands = handSmoother.update(rawHands);
     updateThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
     drawThumbMiddleEndpointGuides(hands);
