@@ -17,7 +17,7 @@
       <section class="controls" aria-label="Instrument controls">
         <div class="header">
           <h1>Face Tone Instrument</h1>
-          <p>Open your mouth for the low tone. Close your eyes for the higher tone.</p>
+          <p>Open your mouth to bend pitch. Open your eyes to raise volume.</p>
         </div>
 
         <div class="buttons">
@@ -29,7 +29,7 @@
 
         <div class="meter-grid">
           <label class="meter">
-            <span>Mouth openness <strong id="mouthFrequencyLabel">880 Hz</strong></span>
+            <span>Mouth openness <strong id="mouthFrequencyLabel">20-2000 Hz</strong></span>
             <progress id="mouthOpenMeter" max="1" value="0"></progress>
             <output id="mouthOpenValue">0.00</output>
           </label>
@@ -47,13 +47,13 @@
           </label>
 
           <label class="meter">
-            <span>Low tone volume</span>
+            <span>Square volume</span>
             <progress id="mouthVolumeMeter" max="1" value="0"></progress>
             <output id="mouthVolumeValue">0.00</output>
           </label>
 
           <label class="meter">
-            <span>High tone volume</span>
+            <span>Eye tone volume</span>
             <progress id="eyeVolumeMeter" max="1" value="0"></progress>
             <output id="eyeVolumeValue">0.00</output>
           </label>
@@ -76,7 +76,7 @@
             <input id="eyeOpenThreshold" type="range" min="0.08" max="0.35" step="0.01" value="0.21">
           </label>
           <label>
-            Mouth pitch <output id="mouthFrequencyValue">880 Hz</output>
+            Mouth pitch start <output id="mouthFrequencyValue">880 Hz</output>
             <input id="mouthFrequency" type="range" min="10" max="5000" step="1" value="880">
           </label>
           <label>
@@ -123,6 +123,6 @@
       </section>
     </main>
 
-    <script type="module" src="app.js?v=2026-05-27-hand-cpu"></script>
+    <script type="module" src="app.js?v=2026-05-27-mouth-pitch-eye-volume"></script>
   </body>
 </html>

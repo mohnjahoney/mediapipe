@@ -9,9 +9,24 @@ export function createMappingEngine(mappings) {
           ? settings[mapping.binaryThresholdSetting]
           : mapping.binaryThreshold ?? 0;
 
-        outputs[mapping.output] = settings.binaryAudio
-          ? value > threshold ? 1 : 0
-          : value * (mapping.scale ?? 1);
+        if (settings.binaryAudio && mapping.outputRange) {
+          const [min, max] = mapping.outputRange;
+          outputs[mapping.output] = value > threshold ? max : min;
+          continue;
+        }
+
+        if (settings.binaryAudio) {
+          outputs[mapping.output] = value > threshold ? 1 : 0;
+          continue;
+        }
+
+        if (mapping.outputRange) {
+          const [min, max] = mapping.outputRange;
+          outputs[mapping.output] = min + value * (max - min);
+          continue;
+        }
+
+        outputs[mapping.output] = value * (mapping.scale ?? 1);
       }
 
       return outputs;

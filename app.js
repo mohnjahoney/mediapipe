@@ -114,7 +114,7 @@ function runFrame() {
   );
   const outputSignals = processMappings(rawSignals, settings);
 
-  audio?.setVolumes(outputSignals);
+  audio?.setMappedParams(outputSignals);
   ui.updateMeters({
     mouthOpen: rawSignals["face.mouthOpen"],
     eyeOpen: rawSignals["face.eyeOpen"],

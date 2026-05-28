@@ -1,15 +1,15 @@
 export const DEFAULT_MAPPINGS = [
   {
-    id: "mouth-volume",
+    id: "mouth-pitch",
     input: "face.mouthOpen",
-    output: "mouthVolume",
+    output: "mouthFrequency",
     binaryThreshold: 0,
-    scale: 1,
+    outputRange: [20, 2000],
   },
   {
-    id: "eye-volume",
-    input: "face.eyeClosed",
-    output: "eyeVolume",
+    id: "eye-to-square-volume",
+    input: "face.eyeOpen",
+    output: "mouthVolume",
     binaryThreshold: 0,
     scale: 1,
   },

@@ -42,8 +42,11 @@ export function createAudioEngine(settings) {
       redOsc.frequency.setValueAtTime(redFrequency, now);
     },
 
-    setVolumes({ mouthVolume, eyeVolume, redVolume }) {
+    setMappedParams({ mouthFrequency, mouthVolume = 0, eyeVolume = 0, redVolume = 0 }) {
       const now = context.currentTime;
+      if (mouthFrequency !== undefined) {
+        mouthOsc.frequency.setValueAtTime(mouthFrequency, now);
+      }
       mouthGain.gain.setValueAtTime(mouthVolume * 0.16, now);
       eyeGain.gain.setValueAtTime(eyeVolume * 0.12, now);
       redGain.gain.setValueAtTime(redVolume * 0.12, now);

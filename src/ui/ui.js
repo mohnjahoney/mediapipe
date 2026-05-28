@@ -128,7 +128,7 @@ export function createUI() {
 
     updateFrequencyLabels() {
       const { mouthFrequency, eyeFrequency, redFrequency } = this.getSettings();
-      elements.mouthFrequencyLabel.textContent = `${mouthFrequency} Hz`;
+      elements.mouthFrequencyLabel.textContent = "20-2000 Hz";
       elements.eyeFrequencyLabel.textContent = `${eyeFrequency} Hz`;
       elements.redFrequencyLabel.textContent = `${redFrequency} Hz`;
       elements.mouthFrequencyValue.value = `${mouthFrequency} Hz`;
@@ -148,7 +148,14 @@ export function createUI() {
       elements.resolutionValue.value = this.getSettings().resolution.label;
     },
 
-    updateMeters({ mouthOpen, eyeOpen, redPixel, mouthVolume, eyeVolume, redVolume }) {
+    updateMeters({
+      mouthOpen = 0,
+      eyeOpen = 0,
+      redPixel = 0,
+      mouthVolume = 0,
+      eyeVolume = 0,
+      redVolume = 0,
+    }) {
       setMeter(meters.mouthOpen, mouthOpen);
       setMeter(meters.eyeOpen, eyeOpen);
       setMeter(meters.redPixel, redPixel);
