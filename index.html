@@ -7,6 +7,14 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <header class="project-shell" aria-label="Project selector">
+      <label>
+        Project
+        <select id="projectSelector">
+          <option value="face-audio-instrument">Face Audio Instrument</option>
+        </select>
+      </label>
+    </header>
     <main class="app">
       <section class="stage">
         <video id="video" autoplay playsinline muted></video>
@@ -123,6 +131,6 @@
       </section>
     </main>
 
-    <script type="module" src="app.js?v=2026-05-27-project-loader"></script>
+    <script type="module" src="app.js?v=2026-05-27-project-selector"></script>
   </body>
 </html>
