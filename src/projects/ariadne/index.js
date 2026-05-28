@@ -5,6 +5,9 @@ import { createOverlay } from "../../visuals/overlay.js";
 const THUMB_TIP = 4;
 const MIDDLE_TIP = 12;
 const thumbToMiddleThreshold = 0.06;
+const MIN_CONTACT_POINT_RADIUS = 4;
+const MAX_CONTACT_POINT_RADIUS = 16;
+const CONTACT_POINT_Z_RADIUS_SCALE = 70;
 
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
@@ -83,33 +86,53 @@ export function createAriadneProject({ video, canvas }) {
 
   function drawThumbMiddleContactSegmentLines() {
     for (const segment of thumbMiddleContactSegments) {
-      overlay.drawLine(segment.initial, segment.final, { color: "#ffffff", lineWidth: 3 });
+      drawThumbMiddleContactLine(segment.initial, segment.final);
     }
   }
 
   function drawThumbMiddleLiveContactLine() {
     if (!thumbMiddleInitialContactPoint || !thumbMiddleContactPoint) return;
 
-    overlay.drawLine(thumbMiddleInitialContactPoint, thumbMiddleContactPoint, {
+    drawThumbMiddleContactLine(thumbMiddleInitialContactPoint, thumbMiddleContactPoint);
+  }
+
+  function drawThumbMiddleContactLine(start, end) {
+    overlay.drawTaperedLine(start, end, {
       color: "#ffffff",
-      lineWidth: 3,
+      startWidth: contactPointRadius(start),
+      endWidth: contactPointRadius(end),
     });
   }
 
   function drawThumbMiddleContactDots() {
     for (const segment of thumbMiddleContactSegments) {
-      overlay.drawPoint(segment.initial, { color: "#26d96c", radius: 7 });
-      overlay.drawPoint(segment.final, { color: "#ff3333", radius: 7 });
+      overlay.drawPoint(segment.initial, {
+        color: "#26d96c",
+        radius: contactPointRadius(segment.initial),
+      });
+      overlay.drawPoint(segment.final, {
+        color: "#ff3333",
+        radius: contactPointRadius(segment.final),
+      });
     }
 
     if (thumbMiddleInitialContactPoint) {
-      overlay.drawPoint(thumbMiddleInitialContactPoint, { color: "#26d96c", radius: 7 });
+      overlay.drawPoint(thumbMiddleInitialContactPoint, {
+        color: "#26d96c",
+        radius: contactPointRadius(thumbMiddleInitialContactPoint),
+      });
     }
     if (thumbMiddleFinalContactPoint) {
-      overlay.drawPoint(thumbMiddleFinalContactPoint, { color: "#ff3333", radius: 7 });
+      overlay.drawPoint(thumbMiddleFinalContactPoint, {
+        color: "#ff3333",
+        radius: contactPointRadius(thumbMiddleFinalContactPoint),
+      });
     }
     if (thumbMiddleContactPoint) {
-      overlay.drawPoint(thumbMiddleContactPoint, { color: "#ffffff", radius: 6 });
+      overlay.drawPoint(thumbMiddleContactPoint, {
+        color: "#ffffff",
+        radius: contactPointRadius(thumbMiddleContactPoint),
+      });
     }
   }
 
@@ -160,5 +183,16 @@ function midpoint(a, b) {
   return {
     x: (a.x + b.x) / 2,
     y: (a.y + b.y) / 2,
+    z: ((a.z ?? 0) + (b.z ?? 0)) / 2,
   };
+}
+
+function contactPointRadius(point) {
+  const radius = 7 - (point.z ?? 0) * CONTACT_POINT_Z_RADIUS_SCALE;
+
+  return clamp(radius, MIN_CONTACT_POINT_RADIUS, MAX_CONTACT_POINT_RADIUS);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }

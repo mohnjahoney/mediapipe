@@ -129,5 +129,40 @@ export function createOverlay(canvas) {
       ctx.lineWidth = lineWidth;
       ctx.stroke();
     },
+
+    drawTaperedLine(start, end, options = {}) {
+      const color = options.color ?? "#ffffff";
+      const startWidth = options.startWidth ?? 3;
+      const endWidth = options.endWidth ?? 3;
+      const startX = start.x * canvas.width;
+      const startY = start.y * canvas.height;
+      const endX = end.x * canvas.width;
+      const endY = end.y * canvas.height;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.hypot(dx, dy);
+
+      if (length < 0.001) {
+        ctx.beginPath();
+        ctx.arc(startX, startY, Math.max(startWidth, endWidth) / 2, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        return;
+      }
+
+      const normalX = -dy / length;
+      const normalY = dx / length;
+      const startHalfWidth = startWidth / 2;
+      const endHalfWidth = endWidth / 2;
+
+      ctx.beginPath();
+      ctx.moveTo(startX + normalX * startHalfWidth, startY + normalY * startHalfWidth);
+      ctx.lineTo(endX + normalX * endHalfWidth, endY + normalY * endHalfWidth);
+      ctx.lineTo(endX - normalX * endHalfWidth, endY - normalY * endHalfWidth);
+      ctx.lineTo(startX - normalX * startHalfWidth, startY - normalY * startHalfWidth);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    },
   };
 }
