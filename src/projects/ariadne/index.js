@@ -58,6 +58,7 @@ export function createAriadneProject({ video, canvas }) {
     overlay.drawHands(hands);
     drawThumbMiddleEndpointGuides(hands);
     drawThumbMiddleContactSegmentLines();
+    drawThumbMiddleLiveContactLine();
     drawThumbMiddleContactDots();
 
     animationFrameId = requestAnimationFrame(runFrame);
@@ -84,6 +85,15 @@ export function createAriadneProject({ video, canvas }) {
     for (const segment of thumbMiddleContactSegments) {
       overlay.drawLine(segment.initial, segment.final, { color: "#ffffff", lineWidth: 3 });
     }
+  }
+
+  function drawThumbMiddleLiveContactLine() {
+    if (!thumbMiddleInitialContactPoint || !thumbMiddleContactPoint) return;
+
+    overlay.drawLine(thumbMiddleInitialContactPoint, thumbMiddleContactPoint, {
+      color: "#ffffff",
+      lineWidth: 3,
+    });
   }
 
   function drawThumbMiddleContactDots() {
