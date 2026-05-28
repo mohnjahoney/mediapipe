@@ -114,7 +114,7 @@ function runFrame() {
   );
   const outputSignals = processMappings(rawSignals, settings);
 
-  audio?.setMappedParams?.(outputSignals) ?? audio?.setVolumes?.(outputSignals);
+  applyAudioParams(outputSignals);
   ui.updateMeters({
     mouthOpen: rawSignals["face.mouthOpen"],
     eyeOpen: rawSignals["face.eyeOpen"],
@@ -169,4 +169,19 @@ function processMappings(rawSignals, settings) {
   const delayedSignals = signalDelay.get(settings.delaySeconds) ?? rawSignals;
 
   return mappingEngine.process(delayedSignals, settings);
+}
+
+function applyAudioParams(outputSignals) {
+  if (!audio) return;
+
+  if (audio.setMappedParams) {
+    audio.setMappedParams(outputSignals);
+    return;
+  }
+
+  audio.setVolumes?.({
+    mouthVolume: outputSignals.mouthVolume ?? 0,
+    eyeVolume: outputSignals.eyeVolume ?? 0,
+    redVolume: outputSignals.redVolume ?? 0,
+  });
 }
