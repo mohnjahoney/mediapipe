@@ -9,12 +9,12 @@ const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/w
 
 export { HandLandmarker };
 
-export async function createHandTracker() {
+export async function createHandTracker({ delegate = "CPU" } = {}) {
   const vision = await FilesetResolver.forVisionTasks(WASM_URL);
   const landmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: MODEL_URL,
-      delegate: "CPU",
+      delegate,
     },
     runningMode: "VIDEO",
     numHands: 2,
@@ -23,6 +23,10 @@ export async function createHandTracker() {
   return {
     detect(video, time = performance.now()) {
       return landmarker.detectForVideo(video, time).landmarks ?? [];
+    },
+
+    close() {
+      landmarker.close?.();
     },
   };
 }

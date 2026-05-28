@@ -31,13 +31,17 @@ export function createAriadneProject({ video, canvas }) {
   const controls = document.querySelector(".controls");
   let renderMode = renderControl.value;
   let materialMode = renderControl.materialMode;
+  let delegateMode = renderControl.delegateMode;
+  let showPerformance = renderControl.showPerformance;
   let handTracker;
+  let handTrackerRequestId = 0;
   let stream;
   let animationFrameId = 0;
   let thumbMiddleContactPoint = null;
   let thumbMiddleInitialContactPoint = null;
   let thumbMiddleFinalContactPoint = null;
   const thumbMiddleContactSegments = [];
+  const performanceStats = createPerformanceStats();
 
   return {
     async start() {
@@ -48,19 +52,31 @@ export function createAriadneProject({ video, canvas }) {
       renderControl.clearButton.addEventListener("click", clearScreen);
       loading.textContent = "Loading Ariadne...";
 
+      const requestId = ++handTrackerRequestId;
+
       try {
-        handTracker = await createHandTracker();
+        const nextHandTracker = await loadHandTracker(delegateMode);
+        if (requestId !== handTrackerRequestId) {
+          nextHandTracker.close();
+          return;
+        }
+        handTracker = nextHandTracker;
         stream = await startCamera(video, getResolutionPreset("full"));
         loading.hidden = true;
         runFrame();
       } catch (error) {
-        loading.textContent = error.message;
+        if (requestId === handTrackerRequestId) {
+          loading.textContent = error.message;
+        }
       }
     },
 
     stop() {
       cancelAnimationFrame(animationFrameId);
       animationFrameId = 0;
+      handTrackerRequestId += 1;
+      handTracker?.close();
+      handTracker = null;
       stopCamera(stream, video);
       stream = null;
       clearScreen();
@@ -74,17 +90,28 @@ export function createAriadneProject({ video, canvas }) {
   };
 
   function runFrame() {
-    if (!handTracker || !stream) return;
+    if (!handTracker || !stream) {
+      animationFrameId = requestAnimationFrame(runFrame);
+      return;
+    }
 
+    const frameStart = performance.now();
     overlay.resizeToVideo(video);
     overlay.clear();
 
+    const detectStart = performance.now();
     const rawHands = handTracker.detect(video);
+    const detectMs = performance.now() - detectStart;
     const hands = handSmoother.update(rawHands);
     updateThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
     drawThumbMiddleEndpointGuides(hands);
     renderContactVisuals();
+    updatePerformanceStats({
+      detectMs,
+      frameMs: performance.now() - frameStart,
+      hands,
+    });
 
     animationFrameId = requestAnimationFrame(runFrame);
   }
@@ -191,8 +218,16 @@ export function createAriadneProject({ video, canvas }) {
   }
 
   function handleRenderModeChange() {
+    const nextDelegateMode = renderControl.delegateMode;
     renderMode = renderControl.value;
     materialMode = renderControl.materialMode;
+    showPerformance = renderControl.showPerformance;
+    renderControl.performancePanel.hidden = !showPerformance;
+
+    if (nextDelegateMode !== delegateMode) {
+      delegateMode = nextDelegateMode;
+      reloadHandTracker();
+    }
   }
 
   function clearScreen() {
@@ -202,12 +237,86 @@ export function createAriadneProject({ video, canvas }) {
     thumbMiddleContactSegments.length = 0;
     threeContactRenderer.clear();
   }
+
+  async function reloadHandTracker() {
+    const requestId = ++handTrackerRequestId;
+
+    handTracker?.close();
+    handTracker = null;
+    handSmoother.reset();
+    clearScreen();
+    loading.hidden = false;
+    loading.textContent = `Loading ${delegateMode} hand tracker...`;
+
+    try {
+      const nextHandTracker = await loadHandTracker(delegateMode);
+      if (requestId !== handTrackerRequestId) {
+        nextHandTracker.close();
+        return;
+      }
+      handTracker = nextHandTracker;
+      loading.hidden = true;
+    } catch (error) {
+      if (requestId === handTrackerRequestId) {
+        loading.textContent = error.message;
+      }
+    }
+  }
+
+  async function loadHandTracker(delegate) {
+    return createHandTracker({ delegate });
+  }
+
+  function updatePerformanceStats({ detectMs, frameMs, hands }) {
+    const now = performance.now();
+    const contactInfo = getThumbMiddleContactInfo(hands);
+
+    performanceStats.frameTimes.push(now);
+    pruneRecent(performanceStats.frameTimes, now, 1000);
+
+    performanceStats.detectMs = detectMs;
+    performanceStats.frameMs = frameMs;
+    performanceStats.handCount = hands.length;
+    performanceStats.contactDistance = contactInfo?.distance ?? null;
+    performanceStats.contactThreshold = contactInfo?.threshold ?? null;
+    performanceStats.isContacting = Boolean(thumbMiddleContactPoint);
+
+    if (performanceStats.previousContacting !== performanceStats.isContacting) {
+      performanceStats.contactToggleTimes.push(now);
+      performanceStats.previousContacting = performanceStats.isContacting;
+    }
+    pruneRecent(performanceStats.contactToggleTimes, now, 1000);
+
+    if (showPerformance && now - performanceStats.lastPanelUpdateAt > 200) {
+      performanceStats.lastPanelUpdateAt = now;
+      renderPerformancePanel();
+    }
+  }
+
+  function renderPerformancePanel() {
+    renderControl.performancePanel.textContent = [
+      `delegate: ${delegateMode}`,
+      `render: ${renderMode}${renderMode === "three" ? `/${materialMode}` : ""}`,
+      `fps: ${performanceStats.frameTimes.length}`,
+      `frame: ${formatMs(performanceStats.frameMs)}`,
+      `detect: ${formatMs(performanceStats.detectMs)}`,
+      `hands: ${performanceStats.handCount}`,
+      `contact: ${performanceStats.isContacting ? "on" : "off"}`,
+      `distance: ${formatNumber(performanceStats.contactDistance)}`,
+      `threshold: ${formatNumber(performanceStats.contactThreshold)}`,
+      `toggles/s: ${performanceStats.contactToggleTimes.length}`,
+    ].join("\n");
+  }
 }
 
 function createRenderControl(stage) {
   const label = document.createElement("label");
   const renderSelect = document.createElement("select");
   const materialSelect = document.createElement("select");
+  const delegateSelect = document.createElement("select");
+  const performanceLabel = document.createElement("label");
+  const performanceToggle = document.createElement("input");
+  const performancePanel = document.createElement("pre");
   const clearButton = document.createElement("button");
 
   label.className = "ariadne-render-control";
@@ -227,25 +336,59 @@ function createRenderControl(stage) {
     <option value="lambert">Lambert</option>
   `;
 
+  const delegateText = document.createElement("span");
+  delegateText.textContent = "MediaPipe delegate";
+  delegateSelect.innerHTML = `
+    <option value="CPU">CPU</option>
+    <option value="GPU">GPU</option>
+  `;
+
+  performanceToggle.type = "checkbox";
+  performanceLabel.className = "ariadne-toggle-row";
+  performanceLabel.append(performanceToggle, "Performance");
+  performancePanel.className = "ariadne-performance-panel";
+  performancePanel.hidden = true;
+
   clearButton.type = "button";
   clearButton.textContent = "Clear Screen";
 
-  label.append(renderText, renderSelect, materialText, materialSelect, clearButton);
+  label.append(
+    renderText,
+    renderSelect,
+    materialText,
+    materialSelect,
+    delegateText,
+    delegateSelect,
+    performanceLabel,
+    performancePanel,
+    clearButton
+  );
   stage.append(label);
 
   return {
     element: label,
     clearButton,
+    performancePanel,
     get value() {
       return renderSelect.value;
     },
     get materialMode() {
       return materialSelect.value;
     },
+    get delegateMode() {
+      return delegateSelect.value;
+    },
+    get showPerformance() {
+      return performanceToggle.checked;
+    },
   };
 }
 
 function getThumbMiddleContactPoint(hands) {
+  return getThumbMiddleContactInfo(hands)?.point ?? null;
+}
+
+function getThumbMiddleContactInfo(hands) {
   let closestContact = null;
   let closestDistance = Infinity;
 
@@ -258,9 +401,13 @@ function getThumbMiddleContactPoint(hands) {
     const thumbMiddleDistance = distance(thumb, middle);
     const thumbMiddleThreshold = contactThreshold(midpoint(thumb, middle));
 
-    if (thumbMiddleDistance < thumbMiddleThreshold && thumbMiddleDistance < closestDistance) {
+    if (thumbMiddleDistance < closestDistance) {
       closestDistance = thumbMiddleDistance;
-      closestContact = midpoint(thumb, middle);
+      closestContact = {
+        point: thumbMiddleDistance < thumbMiddleThreshold ? midpoint(thumb, middle) : null,
+        distance: thumbMiddleDistance,
+        threshold: thumbMiddleThreshold,
+      };
     }
   }
 
@@ -295,4 +442,33 @@ function zSizeScale(point) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function createPerformanceStats() {
+  return {
+    contactDistance: null,
+    contactThreshold: null,
+    contactToggleTimes: [],
+    detectMs: 0,
+    frameMs: 0,
+    frameTimes: [],
+    handCount: 0,
+    isContacting: false,
+    lastPanelUpdateAt: 0,
+    previousContacting: false,
+  };
+}
+
+function pruneRecent(values, now, windowMs) {
+  while (values.length > 0 && now - values[0] > windowMs) {
+    values.shift();
+  }
+}
+
+function formatMs(value) {
+  return `${value.toFixed(1)} ms`;
+}
+
+function formatNumber(value) {
+  return Number.isFinite(value) ? value.toFixed(3) : "-";
 }
