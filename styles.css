@@ -255,7 +255,7 @@ select {
   grid-template-columns: auto auto;
   align-items: center;
   gap: 8px;
-  min-width: 160px;
+  min-width: 210px;
   padding: 8px;
   border-radius: 6px;
   background: rgba(5, 6, 8, 0.76);
@@ -263,11 +263,20 @@ select {
   font-size: 0.85rem;
 }
 
+.drawing-control select {
+  min-width: 120px;
+}
+
 .drawing-current-color {
   width: 28px;
   height: 28px;
   border: 2px solid rgba(255, 255, 255, 0.8);
   border-radius: 999px;
+}
+
+.drawing-color-values {
+  grid-column: 1 / -1;
+  font-variant-numeric: tabular-nums;
 }
 
 .drawing-control button {

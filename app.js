@@ -1,6 +1,6 @@
 import { createFaceAudioInstrumentProject } from "./src/projects/face-audio-instrument/index.js";
 import { createAriadneProject } from "./src/projects/ariadne/index.js?v=2026-05-28-pinch-recognizer";
-import { createDrawingProject } from "./src/projects/drawing/index.js?v=2026-05-28-drawing";
+import { createDrawingProject } from "./src/projects/drawing/index.js?v=2026-05-28-hand-rgba";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");

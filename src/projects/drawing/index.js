@@ -21,6 +21,29 @@ const PALETTE_COLORS = [
   "#111111",
 ];
 
+const HAND_COLOR_CONTROLS = {
+  red: {
+    tip: HAND_JOINTS.thumbTip,
+    reference: HAND_JOINTS.thumbMcp,
+    chain: [HAND_JOINTS.thumbMcp, HAND_JOINTS.thumbIp, HAND_JOINTS.thumbTip],
+  },
+  green: {
+    tip: HAND_JOINTS.indexFingerTip,
+    reference: HAND_JOINTS.indexFingerPip,
+    chain: [HAND_JOINTS.indexFingerPip, HAND_JOINTS.indexFingerDip, HAND_JOINTS.indexFingerTip],
+  },
+  blue: {
+    tip: HAND_JOINTS.middleFingerTip,
+    reference: HAND_JOINTS.middleFingerPip,
+    chain: [HAND_JOINTS.middleFingerPip, HAND_JOINTS.middleFingerDip, HAND_JOINTS.middleFingerTip],
+  },
+  alpha: {
+    tip: HAND_JOINTS.pinkyTip,
+    reference: HAND_JOINTS.pinkyPip,
+    chain: [HAND_JOINTS.pinkyPip, HAND_JOINTS.pinkyDip, HAND_JOINTS.pinkyTip],
+  },
+};
+
 export function createDrawingProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
   const stage = canvas.closest(".stage");
@@ -34,6 +57,7 @@ export function createDrawingProject({ video, canvas }) {
   let handTracker;
   let stream;
   let animationFrameId = 0;
+  let paletteMode = panel.paletteMode;
   let currentColor = PALETTE_COLORS[3];
   let isDrawing = false;
   let lastDrawPoint = null;
@@ -47,6 +71,7 @@ export function createDrawingProject({ video, canvas }) {
       document.body.classList.add("project-drawing");
       controls.hidden = true;
       panel.element.hidden = false;
+      panel.element.addEventListener("change", handlePanelChange);
       panel.clearButton.addEventListener("click", clearDrawing);
       loading.textContent = "Loading Drawing...";
 
@@ -67,6 +92,7 @@ export function createDrawingProject({ video, canvas }) {
       handTracker = null;
       stopCamera(stream, video);
       stream = null;
+      panel.element.removeEventListener("change", handlePanelChange);
       panel.clearButton.removeEventListener("click", clearDrawing);
       panel.element.remove();
       drawingCanvas.remove();
@@ -91,18 +117,8 @@ export function createDrawingProject({ video, canvas }) {
 
     overlay.drawHands(hands.map((hand) => hand.landmarks));
 
-    const swatches = leftHand && isPaletteHandOpen(leftHand.landmarks)
-      ? drawPalette(leftHand.landmarks)
-      : [];
-
-    const selectedColor = rightHand ? hitTestPalette(rightHand.landmarks, swatches) : null;
-    if (selectedColor) {
-      currentColor = selectedColor;
-      panel.setColor(currentColor);
-      endStroke();
-    }
-
-    updateDrawing(rightHand?.landmarks, Boolean(selectedColor));
+    const isPickingColor = updateColor(leftHand?.landmarks, rightHand?.landmarks);
+    updateDrawing(rightHand?.landmarks, isPickingColor);
 
     animationFrameId = requestAnimationFrame(runFrame);
   }
@@ -134,6 +150,35 @@ export function createDrawingProject({ video, canvas }) {
     }
 
     drawStroke(drawPoint, brush.radius);
+  }
+
+  function updateColor(leftHandLandmarks, rightHandLandmarks) {
+    if (paletteMode === "hand") {
+      if (leftHandLandmarks) {
+        const handColor = colorFromHand(leftHandLandmarks);
+        currentColor = handColor.css;
+        panel.setColor(currentColor);
+        panel.setColorValues(handColor);
+        drawHandColorControls(leftHandLandmarks, handColor);
+      }
+
+      return false;
+    }
+
+    panel.setColorValues(null);
+
+    const swatches = leftHandLandmarks && isPaletteHandOpen(leftHandLandmarks)
+      ? drawPalette(leftHandLandmarks)
+      : [];
+    const selectedColor = rightHandLandmarks ? hitTestPalette(rightHandLandmarks, swatches) : null;
+
+    if (selectedColor) {
+      currentColor = selectedColor;
+      panel.setColor(currentColor);
+      endStroke();
+    }
+
+    return Boolean(selectedColor);
   }
 
   function measureBrush(landmarks) {
@@ -209,6 +254,41 @@ export function createDrawingProject({ video, canvas }) {
     }
 
     return swatches;
+  }
+
+  function colorFromHand(landmarks) {
+    const red = fingerExtension(landmarks, HAND_COLOR_CONTROLS.red);
+    const green = fingerExtension(landmarks, HAND_COLOR_CONTROLS.green);
+    const blue = fingerExtension(landmarks, HAND_COLOR_CONTROLS.blue);
+    const alpha = fingerExtension(landmarks, HAND_COLOR_CONTROLS.alpha);
+    const rgba = {
+      alpha,
+      blue: Math.round(blue * 255),
+      green: Math.round(green * 255),
+      red: Math.round(red * 255),
+    };
+
+    return {
+      ...rgba,
+      css: `rgba(${rgba.red}, ${rgba.green}, ${rgba.blue}, ${alpha.toFixed(2)})`,
+    };
+  }
+
+  function drawHandColorControls(landmarks, color) {
+    drawFingerControl(landmarks, HAND_COLOR_CONTROLS.red, `rgba(255, 59, 48, ${0.25 + color.red / 510})`);
+    drawFingerControl(landmarks, HAND_COLOR_CONTROLS.green, `rgba(52, 199, 89, ${0.25 + color.green / 510})`);
+    drawFingerControl(landmarks, HAND_COLOR_CONTROLS.blue, `rgba(0, 122, 255, ${0.25 + color.blue / 510})`);
+    drawFingerControl(landmarks, HAND_COLOR_CONTROLS.alpha, `rgba(255, 255, 255, ${0.25 + color.alpha * 0.5})`);
+  }
+
+  function drawFingerControl(landmarks, control, color) {
+    const tip = landmarks[control.tip];
+    const reference = landmarks[control.reference];
+
+    if (!tip || !reference) return;
+
+    overlay.drawLine(reference, tip, { color, lineWidth: 5 });
+    overlay.drawPoint(tip, { color, radius: 8 });
   }
 
   function paletteSwatches(landmarks) {
@@ -307,28 +387,49 @@ export function createDrawingProject({ video, canvas }) {
     isDrawing = false;
     lastDrawPoint = null;
   }
+
+  function handlePanelChange() {
+    paletteMode = panel.paletteMode;
+    endStroke();
+  }
 }
 
 function createDrawingPanel(stage) {
   const element = document.createElement("div");
+  const paletteSelect = document.createElement("select");
   const colorSwatch = document.createElement("span");
   const radiusValue = document.createElement("span");
+  const colorValues = document.createElement("span");
   const clearButton = document.createElement("button");
 
   element.className = "drawing-control";
   element.hidden = true;
+  paletteSelect.innerHTML = `
+    <option value="swatches">Swatches</option>
+    <option value="hand">Hand RGBA</option>
+  `;
   colorSwatch.className = "drawing-current-color";
+  colorValues.className = "drawing-color-values";
+  colorValues.textContent = "Swatches";
   radiusValue.textContent = "Radius 0";
   clearButton.type = "button";
   clearButton.textContent = "Clear Screen";
-  element.append("Color", colorSwatch, radiusValue, clearButton);
+  element.append("Palette", paletteSelect, "Color", colorSwatch, colorValues, radiusValue, clearButton);
   stage.append(element);
 
   return {
     clearButton,
     element,
+    get paletteMode() {
+      return paletteSelect.value;
+    },
     setColor(color) {
       colorSwatch.style.background = color;
+    },
+    setColorValues(color) {
+      colorValues.textContent = color
+        ? `R ${color.red}  G ${color.green}  B ${color.blue}  A ${color.alpha.toFixed(2)}`
+        : "Swatches";
     },
     setRadius(radius) {
       radiusValue.textContent = `Radius ${Math.round(radius)}`;
@@ -365,6 +466,34 @@ function midpoint(a, b) {
     y: (a.y + b.y) / 2,
     z: ((a.z ?? 0) + (b.z ?? 0)) / 2,
   };
+}
+
+function fingerExtension(landmarks, control) {
+  const wrist = landmarks[HAND_JOINTS.wrist];
+  const tip = landmarks[control.tip];
+  const reference = landmarks[control.reference];
+  const chainLength = fingerChainLength(landmarks, control.chain);
+
+  if (!wrist || !tip || !reference || chainLength <= 0) return 0;
+
+  const extension = normalizedDistance(wrist, tip) - normalizedDistance(wrist, reference);
+
+  return clamp(extension / chainLength, 0, 1);
+}
+
+function fingerChainLength(landmarks, joints) {
+  let total = 0;
+
+  for (let index = 1; index < joints.length; index += 1) {
+    const previous = landmarks[joints[index - 1]];
+    const next = landmarks[joints[index]];
+
+    if (!previous || !next) return 0;
+
+    total += normalizedDistance(previous, next);
+  }
+
+  return total;
 }
 
 function normalizedDistance(a, b) {
