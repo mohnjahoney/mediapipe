@@ -5,11 +5,11 @@ import { createHandTracker } from "./src/media/hand-tracker.js";
 import { measureFaceSignals } from "./src/signals/face-signals.js";
 import { measureHandSignals } from "./src/signals/hand-signals.js";
 import { createRedPixelSampler } from "./src/signals/pixel-signals.js";
-import { createAudioEngine } from "./src/audio/audio-engine.js";
+import { createAudioEngine } from "./src/audio/audio-engine.js?v=2026-05-27-mouth-pitch-eye-volume";
 import { createOverlay } from "./src/visuals/overlay.js";
 import { createUI } from "./src/ui/ui.js";
-import { createMappingEngine } from "./src/mapping/mapping-engine.js";
-import { DEFAULT_MAPPINGS } from "./src/mapping/default-mappings.js";
+import { createMappingEngine } from "./src/mapping/mapping-engine.js?v=2026-05-27-mouth-pitch-eye-volume";
+import { DEFAULT_MAPPINGS } from "./src/mapping/default-mappings.js?v=2026-05-27-mouth-pitch-eye-volume";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");
@@ -114,7 +114,7 @@ function runFrame() {
   );
   const outputSignals = processMappings(rawSignals, settings);
 
-  audio?.setMappedParams(outputSignals);
+  audio?.setMappedParams?.(outputSignals) ?? audio?.setVolumes?.(outputSignals);
   ui.updateMeters({
     mouthOpen: rawSignals["face.mouthOpen"],
     eyeOpen: rawSignals["face.eyeOpen"],
