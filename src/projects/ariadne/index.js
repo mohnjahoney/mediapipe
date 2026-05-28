@@ -45,6 +45,7 @@ export function createAriadneProject({ video, canvas }) {
       controls.hidden = true;
       renderControl.element.hidden = false;
       renderControl.element.addEventListener("change", handleRenderModeChange);
+      renderControl.clearButton.addEventListener("click", clearScreen);
       loading.textContent = "Loading Ariadne...";
 
       try {
@@ -62,12 +63,10 @@ export function createAriadneProject({ video, canvas }) {
       animationFrameId = 0;
       stopCamera(stream, video);
       stream = null;
-      thumbMiddleContactPoint = null;
-      thumbMiddleInitialContactPoint = null;
-      thumbMiddleFinalContactPoint = null;
-      thumbMiddleContactSegments.length = 0;
+      clearScreen();
       handSmoother.reset();
       renderControl.element.removeEventListener("change", handleRenderModeChange);
+      renderControl.clearButton.removeEventListener("click", clearScreen);
       renderControl.element.remove();
       threeContactRenderer.dispose();
       overlay.clear();
@@ -195,12 +194,21 @@ export function createAriadneProject({ video, canvas }) {
     renderMode = renderControl.value;
     materialMode = renderControl.materialMode;
   }
+
+  function clearScreen() {
+    thumbMiddleContactPoint = null;
+    thumbMiddleInitialContactPoint = null;
+    thumbMiddleFinalContactPoint = null;
+    thumbMiddleContactSegments.length = 0;
+    threeContactRenderer.clear();
+  }
 }
 
 function createRenderControl(stage) {
   const label = document.createElement("label");
   const renderSelect = document.createElement("select");
   const materialSelect = document.createElement("select");
+  const clearButton = document.createElement("button");
 
   label.className = "ariadne-render-control";
   label.hidden = true;
@@ -219,11 +227,15 @@ function createRenderControl(stage) {
     <option value="lambert">Lambert</option>
   `;
 
-  label.append(renderText, renderSelect, materialText, materialSelect);
+  clearButton.type = "button";
+  clearButton.textContent = "Clear Screen";
+
+  label.append(renderText, renderSelect, materialText, materialSelect, clearButton);
   stage.append(label);
 
   return {
     element: label,
+    clearButton,
     get value() {
       return renderSelect.value;
     },

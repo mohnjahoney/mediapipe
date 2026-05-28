@@ -36,6 +36,10 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
       materialMode = nextMaterialMode === "lambert" ? "lambert" : "basic";
     },
 
+    clear() {
+      clearGroup(root);
+    },
+
     render(state) {
       resize();
       clearGroup(root);
