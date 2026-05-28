@@ -10,6 +10,9 @@ const BRUSH_DISTANCE_RANGE = 0.24;
 const MIN_Z_SIZE_SCALE = 0.6;
 const MAX_Z_SIZE_SCALE = 2.4;
 const Z_SIZE_SCALE_FACTOR = 10;
+const FINGER_COLOR_EXTENSION_MIN = 0.5;
+const FINGER_COLOR_EXTENSION_MAX = 1;
+const THUMB_RED_EXTENSION_MAX = 0.65;
 
 const PALETTE_COLORS = [
   "#ff3b30",
@@ -478,8 +481,9 @@ function fingerExtension(landmarks, control) {
   if (!wrist || !tip || !reference || chainLength <= 0) return 0;
 
   const extension = normalizedDistance(wrist, tip) - normalizedDistance(wrist, reference);
+  const rawExtension = clamp(extension / chainLength, 0, 1);
 
-  return clamp(extension / chainLength, 0, 1);
+  return mapRangeClamped(rawExtension, FINGER_COLOR_EXTENSION_MIN, FINGER_COLOR_EXTENSION_MAX, 0, 1);
 }
 
 function thumbHorizontalExtension(landmarks, control) {
@@ -493,8 +497,9 @@ function thumbHorizontalExtension(landmarks, control) {
   const insideDirection = Math.sign(insideReference.x - reference.x);
   const outwardDirection = insideDirection === 0 ? 1 : -insideDirection;
   const horizontalExtension = (tip.x - reference.x) * outwardDirection;
+  const rawExtension = clamp(horizontalExtension / chainLength, 0, 1);
 
-  return clamp(horizontalExtension / chainLength, 0, 1);
+  return mapRangeClamped(rawExtension, 0, THUMB_RED_EXTENSION_MAX, 0, 1);
 }
 
 function fingerChainLength(landmarks, joints) {
@@ -524,6 +529,10 @@ function mapRange(value, inMin, inMax, outMin, outMax) {
   if (inMax === inMin) return outMin;
 
   return outMin + ((value - inMin) / (inMax - inMin)) * (outMax - outMin);
+}
+
+function mapRangeClamped(value, inMin, inMax, outMin, outMax) {
+  return clamp(mapRange(value, inMin, inMax, outMin, outMax), Math.min(outMin, outMax), Math.max(outMin, outMax));
 }
 
 function clamp(value, min, max) {
