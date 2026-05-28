@@ -1,0 +1,190 @@
+import { startCamera, stopCamera } from "../../core/camera.js";
+import { createSignalDelay } from "../../core/signal-delay.js";
+import { createFaceTracker } from "../../media/face-tracker.js";
+import { createHandTracker } from "../../media/hand-tracker.js";
+import { measureFaceSignals } from "../../signals/face-signals.js";
+import { measureHandSignals } from "../../signals/hand-signals.js";
+import { createRedPixelSampler } from "../../signals/pixel-signals.js";
+import { createAudioEngine } from "../../audio/audio-engine.js?v=2026-05-27-mouth-pitch-eye-volume";
+import { createOverlay } from "../../visuals/overlay.js";
+import { createUI } from "../../ui/ui.js";
+import { createMappingEngine } from "../../mapping/mapping-engine.js?v=2026-05-27-mouth-pitch-eye-volume";
+import { DEFAULT_MAPPINGS } from "../../mapping/default-mappings.js?v=2026-05-27-mouth-pitch-eye-volume";
+
+export function createFaceAudioInstrumentProject({ video, canvas }) {
+  const ui = createUI();
+  const overlay = createOverlay(canvas);
+  const signalDelay = createSignalDelay();
+  const redPixelSampler = createRedPixelSampler();
+  const mappingEngine = createMappingEngine(DEFAULT_MAPPINGS);
+
+  let faceTracker;
+  let handTracker;
+  let stream;
+  let animationFrameId = 0;
+  let audio;
+
+  ui.onStart(start);
+  ui.onStop(stop);
+  ui.onFrequencyChange(() => {
+    ui.updateFrequencyLabels();
+    audio?.setFrequencies(ui.getSettings());
+  });
+  ui.onDelayChange(() => ui.updateDelayLabel());
+  ui.onRedDecisionChange(() => ui.updateRedDecisionLabel());
+  ui.onOverlayChange(() => {
+    if (!ui.getSettings().showOverlay) overlay.clear();
+  });
+  ui.onResolutionChange(() => ui.updateResolutionLabel());
+
+  return {
+    async start() {
+      ui.updateFrequencyLabels();
+      ui.updateRedDecisionLabel();
+      ui.updateDelayLabel();
+      ui.updateResolutionLabel();
+
+      try {
+        faceTracker = await createFaceTracker();
+        handTracker = await createHandTracker();
+        ui.setReady();
+      } catch (error) {
+        ui.setLoadFailed(error.message);
+      }
+    },
+
+    stop,
+  };
+
+  async function start() {
+    ui.setStarting();
+
+    try {
+      if (!faceTracker || !handTracker) {
+        ui.setStartFailed("MediaPipe is still loading. Try again in a moment.");
+        return;
+      }
+
+      stream = await startCamera(video, ui.getSettings().resolution);
+      audio = createAudioEngine(ui.getSettings());
+      await audio.start();
+
+      overlay.resizeToVideo(video);
+      ui.setRunning();
+      runFrame();
+    } catch (error) {
+      ui.setStartFailed(error.message);
+    }
+  }
+
+  function stop() {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+
+    audio?.stop();
+    audio = null;
+    stopCamera(stream, video);
+    stream = null;
+    signalDelay.clear();
+    overlay.clear();
+    ui.setStopped();
+    ui.updateMeters({
+      mouthOpen: 0,
+      eyeOpen: 0,
+      redPixel: 0,
+      mouthVolume: 0,
+      eyeVolume: 0,
+      redVolume: 0,
+    });
+  }
+
+  function runFrame() {
+    if (!faceTracker || !handTracker || !stream) return;
+
+    overlay.resizeToVideo(video);
+    overlay.clear();
+
+    const settings = ui.getSettings();
+    const faceSignals = settings.enableFaceAnalysis
+      ? getFaceSignals(settings)
+      : { landmarks: null, signals: { mouthOpen: 0, eyeOpen: 1 } };
+    const hands = settings.enableHandAnalysis ? handTracker.detect(video) : [];
+    const rawSignals = createSignals(
+      faceSignals.signals,
+      measureHandSignals(hands),
+      redPixelSampler.sample(video)
+    );
+    const outputSignals = processMappings(rawSignals, settings);
+
+    applyAudioParams(outputSignals);
+    ui.updateMeters({
+      mouthOpen: rawSignals["face.mouthOpen"],
+      eyeOpen: rawSignals["face.eyeOpen"],
+      redPixel: rawSignals["pixel.redCorner"],
+      ...outputSignals,
+    });
+
+    if (faceSignals.landmarks && settings.showOverlay) {
+      overlay.drawFace(faceSignals.landmarks);
+    }
+    if (hands.length > 0 && settings.showOverlay) {
+      overlay.drawHands(hands);
+    }
+
+    if (!settings.enableFaceAnalysis && !settings.enableHandAnalysis) {
+      ui.setStatus("Face and hand analysis off.");
+    } else if (!settings.enableFaceAnalysis) {
+      ui.setStatus(`Facial analysis off. Hands: ${hands.length}.`);
+    } else if (faceSignals.landmarks) {
+      ui.setStatus(`Tracking face. Hands: ${hands.length}.`);
+    } else {
+      ui.setStatus(`No face detected. Hands: ${hands.length}.`);
+    }
+
+    overlay.drawSampleBox(redPixelSampler.point);
+    animationFrameId = requestAnimationFrame(runFrame);
+  }
+
+  function getFaceSignals(settings) {
+    const landmarks = faceTracker.detect(video);
+
+    return {
+      landmarks,
+      signals: landmarks
+        ? measureFaceSignals(landmarks, settings.thresholds)
+        : { mouthOpen: 0, eyeOpen: 1 },
+    };
+  }
+
+  function createSignals(faceSignals, handSignals, pixelSignals) {
+    return {
+      "face.mouthOpen": faceSignals.mouthOpen,
+      "face.eyeOpen": faceSignals.eyeOpen,
+      "face.eyeClosed": 1 - faceSignals.eyeOpen,
+      ...handSignals,
+      "pixel.redCorner": pixelSignals.redPixel,
+    };
+  }
+
+  function processMappings(rawSignals, settings) {
+    signalDelay.push(rawSignals);
+    const delayedSignals = signalDelay.get(settings.delaySeconds) ?? rawSignals;
+
+    return mappingEngine.process(delayedSignals, settings);
+  }
+
+  function applyAudioParams(outputSignals) {
+    if (!audio) return;
+
+    if (audio.setMappedParams) {
+      audio.setMappedParams(outputSignals);
+      return;
+    }
+
+    audio.setVolumes?.({
+      mouthVolume: outputSignals.mouthVolume ?? 0,
+      eyeVolume: outputSignals.eyeVolume ?? 0,
+      redVolume: outputSignals.redVolume ?? 0,
+    });
+  }
+}
