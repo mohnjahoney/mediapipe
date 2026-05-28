@@ -96,5 +96,17 @@ export function createOverlay(canvas) {
       ctx.fillStyle = color;
       ctx.fill();
     },
+
+    drawLine(start, end, options = {}) {
+      const color = options.color ?? "#ffffff";
+      const lineWidth = options.lineWidth ?? 3;
+
+      ctx.beginPath();
+      ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+      ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    },
   };
 }
