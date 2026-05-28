@@ -14,6 +14,8 @@ export function createAriadneProject({ video, canvas }) {
   let stream;
   let animationFrameId = 0;
   let thumbMiddleContactPoint = null;
+  let thumbMiddleInitialContactPoint = null;
+  let thumbMiddleFinalContactPoint = null;
 
   return {
     async start() {
@@ -37,6 +39,8 @@ export function createAriadneProject({ video, canvas }) {
       stopCamera(stream, video);
       stream = null;
       thumbMiddleContactPoint = null;
+      thumbMiddleInitialContactPoint = null;
+      thumbMiddleFinalContactPoint = null;
       overlay.clear();
     },
   };
@@ -48,13 +52,32 @@ export function createAriadneProject({ video, canvas }) {
     overlay.clear();
 
     const hands = handTracker.detect(video);
-    thumbMiddleContactPoint = getThumbMiddleContactPoint(hands);
+    updateThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
+    if (thumbMiddleInitialContactPoint) {
+      overlay.drawPoint(thumbMiddleInitialContactPoint, { color: "#26d96c", radius: 7 });
+    }
+    if (thumbMiddleFinalContactPoint) {
+      overlay.drawPoint(thumbMiddleFinalContactPoint, { color: "#ff3333", radius: 7 });
+    }
     if (thumbMiddleContactPoint) {
-      overlay.drawPoint(thumbMiddleContactPoint, { color: "#ff3333", radius: 7 });
+      overlay.drawPoint(thumbMiddleContactPoint, { color: "#ffffff", radius: 6 });
     }
 
     animationFrameId = requestAnimationFrame(runFrame);
+  }
+
+  function updateThumbMiddleContactPoint(hands) {
+    const nextContactPoint = getThumbMiddleContactPoint(hands);
+
+    if (nextContactPoint && !thumbMiddleContactPoint) {
+      thumbMiddleInitialContactPoint = nextContactPoint;
+      thumbMiddleFinalContactPoint = null;
+    } else if (!nextContactPoint && thumbMiddleContactPoint) {
+      thumbMiddleFinalContactPoint = thumbMiddleContactPoint;
+    }
+
+    thumbMiddleContactPoint = nextContactPoint;
   }
 }
 
