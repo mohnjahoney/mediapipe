@@ -14,7 +14,7 @@ export async function createHandTracker() {
   const landmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: MODEL_URL,
-      delegate: "GPU",
+      delegate: "CPU",
     },
     runningMode: "VIDEO",
     numHands: 2,
