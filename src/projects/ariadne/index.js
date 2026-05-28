@@ -4,10 +4,13 @@ import { createOverlay } from "../../visuals/overlay.js";
 
 const THUMB_TIP = 4;
 const MIDDLE_TIP = 12;
-const thumbToMiddleThreshold = 0.06;
+const thumbToMiddleBaseThreshold = 0.06;
+const BASE_CONTACT_POINT_RADIUS = 7;
 const MIN_CONTACT_POINT_RADIUS = 4;
 const MAX_CONTACT_POINT_RADIUS = 16;
-const CONTACT_POINT_Z_RADIUS_SCALE = 70;
+const MIN_Z_SIZE_SCALE = 0.6;
+const MAX_Z_SIZE_SCALE = 2.4;
+const Z_SIZE_SCALE_FACTOR = 10;
 
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
@@ -68,15 +71,15 @@ export function createAriadneProject({ video, canvas }) {
   }
 
   function drawThumbMiddleEndpointGuides(hands) {
-    const radius = overlay.normalizedRadius(thumbToMiddleThreshold / 2);
-
     for (const landmarks of hands) {
       const thumb = landmarks[THUMB_TIP];
       const middle = landmarks[MIDDLE_TIP];
 
       if (!thumb || !middle) continue;
 
-      const isContacting = distance(thumb, middle) < thumbToMiddleThreshold;
+      const thumbMiddleThreshold = contactThreshold(midpoint(thumb, middle));
+      const radius = overlay.normalizedRadius(thumbMiddleThreshold / 2);
+      const isContacting = distance(thumb, middle) < thumbMiddleThreshold;
       const opacity = isContacting ? 0.6 : 0.2;
 
       overlay.drawCircle(thumb, { color: "#ffe45c", opacity, radius });
@@ -165,8 +168,9 @@ function getThumbMiddleContactPoint(hands) {
     if (!thumb || !middle) continue;
 
     const thumbMiddleDistance = distance(thumb, middle);
+    const thumbMiddleThreshold = contactThreshold(midpoint(thumb, middle));
 
-    if (thumbMiddleDistance < thumbToMiddleThreshold && thumbMiddleDistance < closestDistance) {
+    if (thumbMiddleDistance < thumbMiddleThreshold && thumbMiddleDistance < closestDistance) {
       closestDistance = thumbMiddleDistance;
       closestContact = midpoint(thumb, middle);
     }
@@ -187,10 +191,18 @@ function midpoint(a, b) {
   };
 }
 
+function contactThreshold(point) {
+  return thumbToMiddleBaseThreshold * zSizeScale(point);
+}
+
 function contactPointRadius(point) {
-  const radius = 7 - (point.z ?? 0) * CONTACT_POINT_Z_RADIUS_SCALE;
+  const radius = BASE_CONTACT_POINT_RADIUS * zSizeScale(point);
 
   return clamp(radius, MIN_CONTACT_POINT_RADIUS, MAX_CONTACT_POINT_RADIUS);
+}
+
+function zSizeScale(point) {
+  return clamp(1 - (point.z ?? 0) * Z_SIZE_SCALE_FACTOR, MIN_Z_SIZE_SCALE, MAX_Z_SIZE_SCALE);
 }
 
 function clamp(value, min, max) {
