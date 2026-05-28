@@ -1,14 +1,10 @@
 import { getResolutionPreset, startCamera, stopCamera } from "../../core/camera.js";
+import { createPinchRecognizer } from "../../gesture-kit/index.js";
 import { createHandTracker } from "../../media/hand-tracker.js";
 import { createOverlay } from "../../visuals/overlay.js";
-import { compileJointPair } from "../../gesture-kit/hand-joints.js";
 import { createMedianHandSmoother } from "./median-hand-smoother.js";
 import { createThreeContactRenderer } from "./three-contact-renderer.js";
 
-const thumbMiddleContactJoints = compileJointPair({
-  from: "thumbTip",
-  to: "middleFingerTip",
-});
 const thumbToMiddleBaseThreshold = 0.06;
 const BASE_CONTACT_POINT_RADIUS = 7;
 const MIN_CONTACT_POINT_RADIUS = 4;
@@ -20,6 +16,14 @@ const Z_SIZE_SCALE_FACTOR = 10;
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
   const handSmoother = createMedianHandSmoother({ windowSize: 5 });
+  const thumbMiddlePinch = createPinchRecognizer({
+    baseThreshold: thumbToMiddleBaseThreshold,
+    exitScale: 1.25,
+    from: "thumbTip",
+    minFrames: 2,
+    sizeScale: zSizeScale,
+    to: "middleFingerTip",
+  });
   const stage = canvas.closest(".stage");
   const renderControl = createRenderControl(stage);
   const threeContactRenderer = createThreeContactRenderer({
@@ -40,6 +44,7 @@ export function createAriadneProject({ video, canvas }) {
   let thumbMiddleContactPoint = null;
   let thumbMiddleInitialContactPoint = null;
   let thumbMiddleFinalContactPoint = null;
+  let thumbMiddlePinchState = thumbMiddlePinch.state;
   const thumbMiddleContactSegments = [];
   const performanceStats = createPerformanceStats();
 
@@ -103,9 +108,9 @@ export function createAriadneProject({ video, canvas }) {
     const rawHands = handTracker.detect(video);
     const detectMs = performance.now() - detectStart;
     const hands = handSmoother.update(rawHands);
-    updateThumbMiddleContactPoint(hands);
+    updateThumbMiddlePinch(hands);
     overlay.drawHands(hands);
-    drawThumbMiddleEndpointGuides(hands);
+    drawThumbMiddleEndpointGuides();
     renderContactVisuals();
     updatePerformanceStats({
       detectMs,
@@ -116,21 +121,17 @@ export function createAriadneProject({ video, canvas }) {
     animationFrameId = requestAnimationFrame(runFrame);
   }
 
-  function drawThumbMiddleEndpointGuides(hands) {
-    for (const landmarks of hands) {
-      const thumb = landmarks[thumbMiddleContactJoints.fromIndex];
-      const middle = landmarks[thumbMiddleContactJoints.toIndex];
+  function drawThumbMiddleEndpointGuides() {
+    const measurement = thumbMiddlePinchState.measurement;
 
-      if (!thumb || !middle) continue;
+    if (!measurement) return;
 
-      const thumbMiddleThreshold = contactThreshold(midpoint(thumb, middle));
-      const radius = overlay.normalizedRadius(thumbMiddleThreshold / 2);
-      const isContacting = distance(thumb, middle) < thumbMiddleThreshold;
-      const opacity = isContacting ? 0.6 : 0.2;
+    const radius = overlay.normalizedRadius(measurement.enterThreshold / 2);
+    const opacity =
+      thumbMiddlePinchState.active || measurement.distance <= measurement.enterThreshold ? 0.6 : 0.2;
 
-      overlay.drawCircle(thumb, { color: "#ffe45c", opacity, radius });
-      overlay.drawCircle(middle, { color: "#ffe45c", opacity, radius });
-    }
+    overlay.drawCircle(measurement.from, { color: "#ffe45c", opacity, radius });
+    overlay.drawCircle(measurement.to, { color: "#ffe45c", opacity, radius });
   }
 
   function drawThumbMiddleContactSegmentLines() {
@@ -200,21 +201,27 @@ export function createAriadneProject({ video, canvas }) {
     drawThumbMiddleContactDots();
   }
 
-  function updateThumbMiddleContactPoint(hands) {
-    const nextContactPoint = getThumbMiddleContactPoint(hands);
+  function updateThumbMiddlePinch(hands) {
+    thumbMiddlePinchState = thumbMiddlePinch.update(hands);
 
-    if (nextContactPoint && !thumbMiddleContactPoint) {
-      thumbMiddleInitialContactPoint = nextContactPoint;
+    if (thumbMiddlePinchState.phase === "began") {
+      thumbMiddleContactPoint = thumbMiddlePinchState.point;
+      thumbMiddleInitialContactPoint = thumbMiddlePinchState.initialPoint;
       thumbMiddleFinalContactPoint = null;
-    } else if (!nextContactPoint && thumbMiddleContactPoint) {
-      thumbMiddleFinalContactPoint = thumbMiddleContactPoint;
+    } else if (thumbMiddlePinchState.phase === "changed") {
+      thumbMiddleContactPoint = thumbMiddlePinchState.point;
+    } else if (thumbMiddlePinchState.phase === "ended") {
+      thumbMiddleFinalContactPoint = thumbMiddlePinchState.finalPoint;
       thumbMiddleContactSegments.push({
-        initial: thumbMiddleInitialContactPoint,
+        initial: thumbMiddlePinchState.initialPoint,
         final: thumbMiddleFinalContactPoint,
       });
+      thumbMiddleContactPoint = null;
+      thumbMiddleInitialContactPoint = null;
+    } else if (thumbMiddlePinchState.phase === "idle") {
+      thumbMiddleContactPoint = null;
+      thumbMiddleInitialContactPoint = null;
     }
-
-    thumbMiddleContactPoint = nextContactPoint;
   }
 
   function handleRenderModeChange() {
@@ -235,6 +242,8 @@ export function createAriadneProject({ video, canvas }) {
     thumbMiddleInitialContactPoint = null;
     thumbMiddleFinalContactPoint = null;
     thumbMiddleContactSegments.length = 0;
+    thumbMiddlePinch.reset();
+    thumbMiddlePinchState = thumbMiddlePinch.state;
     threeContactRenderer.clear();
   }
 
@@ -269,7 +278,7 @@ export function createAriadneProject({ video, canvas }) {
 
   function updatePerformanceStats({ detectMs, frameMs, hands }) {
     const now = performance.now();
-    const contactInfo = getThumbMiddleContactInfo(hands);
+    const contactInfo = thumbMiddlePinchState;
 
     performanceStats.frameTimes.push(now);
     pruneRecent(performanceStats.frameTimes, now, 1000);
@@ -278,7 +287,7 @@ export function createAriadneProject({ video, canvas }) {
     performanceStats.frameMs = frameMs;
     performanceStats.handCount = hands.length;
     performanceStats.contactDistance = contactInfo?.distance ?? null;
-    performanceStats.contactThreshold = contactInfo?.threshold ?? null;
+    performanceStats.contactThreshold = contactInfo?.enterThreshold ?? null;
     performanceStats.isContacting = Boolean(thumbMiddleContactPoint);
 
     if (performanceStats.previousContacting !== performanceStats.isContacting) {
@@ -301,6 +310,7 @@ export function createAriadneProject({ video, canvas }) {
       `frame: ${formatMs(performanceStats.frameMs)}`,
       `detect: ${formatMs(performanceStats.detectMs)}`,
       `hands: ${performanceStats.handCount}`,
+      `phase: ${thumbMiddlePinchState.phase}`,
       `contact: ${performanceStats.isContacting ? "on" : "off"}`,
       `distance: ${formatNumber(performanceStats.contactDistance)}`,
       `threshold: ${formatNumber(performanceStats.contactThreshold)}`,
@@ -382,52 +392,6 @@ function createRenderControl(stage) {
       return performanceToggle.checked;
     },
   };
-}
-
-function getThumbMiddleContactPoint(hands) {
-  return getThumbMiddleContactInfo(hands)?.point ?? null;
-}
-
-function getThumbMiddleContactInfo(hands) {
-  let closestContact = null;
-  let closestDistance = Infinity;
-
-  for (const landmarks of hands) {
-    const thumb = landmarks[thumbMiddleContactJoints.fromIndex];
-    const middle = landmarks[thumbMiddleContactJoints.toIndex];
-
-    if (!thumb || !middle) continue;
-
-    const thumbMiddleDistance = distance(thumb, middle);
-    const thumbMiddleThreshold = contactThreshold(midpoint(thumb, middle));
-
-    if (thumbMiddleDistance < closestDistance) {
-      closestDistance = thumbMiddleDistance;
-      closestContact = {
-        point: thumbMiddleDistance < thumbMiddleThreshold ? midpoint(thumb, middle) : null,
-        distance: thumbMiddleDistance,
-        threshold: thumbMiddleThreshold,
-      };
-    }
-  }
-
-  return closestContact;
-}
-
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function midpoint(a, b) {
-  return {
-    x: (a.x + b.x) / 2,
-    y: (a.y + b.y) / 2,
-    z: ((a.z ?? 0) + (b.z ?? 0)) / 2,
-  };
-}
-
-function contactThreshold(point) {
-  return thumbToMiddleBaseThreshold * zSizeScale(point);
 }
 
 function contactPointRadius(point) {
