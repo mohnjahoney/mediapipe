@@ -9,16 +9,21 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 3000);
   const root = new THREE.Group();
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.42);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.15);
   const materials = {
-    green: new THREE.MeshBasicMaterial({ color: 0x26d96c, depthTest: true }),
-    red: new THREE.MeshBasicMaterial({ color: 0xff3333, depthTest: true }),
-    white: new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: true }),
+    basic: createBasicMaterials(),
+    lambert: createLambertMaterials(),
   };
+  let materialMode = "basic";
 
   renderer.domElement.className = "three-overlay";
   renderer.domElement.hidden = true;
   renderer.setClearColor(0x000000, 0);
+  directionalLight.position.set(-180, 260, 420);
   scene.add(root);
+  scene.add(ambientLight);
+  scene.add(directionalLight);
   stage.append(renderer.domElement);
 
   return {
@@ -27,9 +32,15 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
       if (!enabled) clearGroup(root);
     },
 
+    setMaterialMode(nextMaterialMode) {
+      materialMode = nextMaterialMode === "lambert" ? "lambert" : "basic";
+    },
+
     render(state) {
       resize();
       clearGroup(root);
+      ambientLight.visible = materialMode === "lambert";
+      directionalLight.visible = materialMode === "lambert";
 
       for (const segment of state.segments) {
         addStroke(segment.initial, segment.final);
@@ -40,21 +51,23 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
       }
 
       for (const segment of state.segments) {
-        addPoint(segment.initial, materials.green);
-        addPoint(segment.final, materials.red);
+        addPoint(segment.initial, activeMaterials().green);
+        addPoint(segment.final, activeMaterials().red);
       }
 
-      if (state.initial) addPoint(state.initial, materials.green);
-      if (state.final) addPoint(state.final, materials.red);
-      if (state.live) addPoint(state.live, materials.white);
+      if (state.initial) addPoint(state.initial, activeMaterials().green);
+      if (state.final) addPoint(state.final, activeMaterials().red);
+      if (state.live) addPoint(state.live, activeMaterials().white);
 
       renderer.render(scene, camera);
     },
 
     dispose() {
       clearGroup(root);
-      for (const material of Object.values(materials)) {
-        material.dispose();
+      for (const materialSet of Object.values(materials)) {
+        for (const material of Object.values(materialSet)) {
+          material.dispose();
+        }
       }
       renderer.dispose();
       renderer.domElement.remove();
@@ -103,7 +116,7 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
       STROKE_SEGMENTS,
       1
     );
-    const mesh = new THREE.Mesh(geometry, materials.white);
+    const mesh = new THREE.Mesh(geometry, activeMaterials().white);
     const midpoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
 
     mesh.position.copy(midpoint);
@@ -121,6 +134,26 @@ export function createThreeContactRenderer({ stage, video, radiusForPoint }) {
       -(point.z ?? 0) * DEPTH_SCALE
     );
   }
+
+  function activeMaterials() {
+    return materials[materialMode];
+  }
+}
+
+function createBasicMaterials() {
+  return {
+    green: new THREE.MeshBasicMaterial({ color: 0x26d96c, depthTest: true }),
+    red: new THREE.MeshBasicMaterial({ color: 0xff3333, depthTest: true }),
+    white: new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: true }),
+  };
+}
+
+function createLambertMaterials() {
+  return {
+    green: new THREE.MeshLambertMaterial({ color: 0x26d96c, depthTest: true }),
+    red: new THREE.MeshLambertMaterial({ color: 0xff3333, depthTest: true }),
+    white: new THREE.MeshLambertMaterial({ color: 0xffffff, depthTest: true }),
+  };
 }
 
 function clearGroup(group) {

@@ -27,6 +27,7 @@ export function createAriadneProject({ video, canvas }) {
   const loading = document.querySelector("#loading");
   const controls = document.querySelector(".controls");
   let renderMode = renderControl.value;
+  let materialMode = renderControl.materialMode;
   let handTracker;
   let stream;
   let animationFrameId = 0;
@@ -159,6 +160,7 @@ export function createAriadneProject({ video, canvas }) {
 
     if (renderMode === "three") {
       threeContactRenderer.setEnabled(true);
+      threeContactRenderer.setMaterialMode(materialMode);
       threeContactRenderer.render(state);
       return;
     }
@@ -188,28 +190,42 @@ export function createAriadneProject({ video, canvas }) {
 
   function handleRenderModeChange() {
     renderMode = renderControl.value;
+    materialMode = renderControl.materialMode;
   }
 }
 
 function createRenderControl(stage) {
   const label = document.createElement("label");
-  const select = document.createElement("select");
+  const renderSelect = document.createElement("select");
+  const materialSelect = document.createElement("select");
 
   label.className = "ariadne-render-control";
-  label.textContent = "Render";
   label.hidden = true;
 
-  select.innerHTML = `
+  const renderText = document.createElement("span");
+  renderText.textContent = "Render";
+  renderSelect.innerHTML = `
     <option value="canvas">2D Canvas</option>
     <option value="three">3D Three.js</option>
   `;
-  label.append(select);
+
+  const materialText = document.createElement("span");
+  materialText.textContent = "3D material";
+  materialSelect.innerHTML = `
+    <option value="basic">Basic</option>
+    <option value="lambert">Lambert</option>
+  `;
+
+  label.append(renderText, renderSelect, materialText, materialSelect);
   stage.append(label);
 
   return {
     element: label,
     get value() {
-      return select.value;
+      return renderSelect.value;
+    },
+    get materialMode() {
+      return materialSelect.value;
     },
   };
 }
