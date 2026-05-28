@@ -2,6 +2,10 @@ import { getResolutionPreset, startCamera, stopCamera } from "../../core/camera.
 import { createHandTracker } from "../../media/hand-tracker.js";
 import { createOverlay } from "../../visuals/overlay.js";
 
+const THUMB_TIP = 4;
+const MIDDLE_TIP = 12;
+const thumbToMiddleThreshold = 0.06;
+
 export function createAriadneProject({ video, canvas }) {
   const overlay = createOverlay(canvas);
   const loading = document.querySelector("#loading");
@@ -9,6 +13,7 @@ export function createAriadneProject({ video, canvas }) {
   let handTracker;
   let stream;
   let animationFrameId = 0;
+  let thumbMiddleContactPoint = null;
 
   return {
     async start() {
@@ -31,6 +36,7 @@ export function createAriadneProject({ video, canvas }) {
       animationFrameId = 0;
       stopCamera(stream, video);
       stream = null;
+      thumbMiddleContactPoint = null;
       overlay.clear();
     },
   };
@@ -42,8 +48,44 @@ export function createAriadneProject({ video, canvas }) {
     overlay.clear();
 
     const hands = handTracker.detect(video);
+    thumbMiddleContactPoint = getThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
+    if (thumbMiddleContactPoint) {
+      overlay.drawPoint(thumbMiddleContactPoint, { color: "#ff3333", radius: 7 });
+    }
 
     animationFrameId = requestAnimationFrame(runFrame);
   }
+}
+
+function getThumbMiddleContactPoint(hands) {
+  let closestContact = null;
+  let closestDistance = Infinity;
+
+  for (const landmarks of hands) {
+    const thumb = landmarks[THUMB_TIP];
+    const middle = landmarks[MIDDLE_TIP];
+
+    if (!thumb || !middle) continue;
+
+    const thumbMiddleDistance = distance(thumb, middle);
+
+    if (thumbMiddleDistance < thumbToMiddleThreshold && thumbMiddleDistance < closestDistance) {
+      closestDistance = thumbMiddleDistance;
+      closestContact = midpoint(thumb, middle);
+    }
+  }
+
+  return closestContact;
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function midpoint(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  };
 }

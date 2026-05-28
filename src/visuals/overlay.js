@@ -84,5 +84,17 @@ export function createOverlay(canvas) {
       ctx.lineWidth = 1;
       ctx.strokeRect(x - halfSize, y - halfSize, size, size);
     },
+
+    drawPoint(point, options = {}) {
+      const radius = options.radius ?? 8;
+      const color = options.color ?? "#ff3333";
+      const x = point.x * canvas.width;
+      const y = point.y * canvas.height;
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    },
   };
 }
