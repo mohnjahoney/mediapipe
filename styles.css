@@ -55,8 +55,16 @@ canvas {
   z-index: 1;
 }
 
-.three-overlay {
+.drawing-canvas {
+  z-index: 1;
+}
+
+#overlay {
   z-index: 2;
+}
+
+.three-overlay {
+  z-index: 3;
 }
 
 .loading {
@@ -67,7 +75,7 @@ canvas {
   border-radius: 6px;
   background: rgba(5, 6, 8, 0.82);
   color: #dce2ef;
-  z-index: 4;
+  z-index: 5;
 }
 
 .controls {
@@ -214,7 +222,12 @@ select {
   grid-template-columns: 1fr;
 }
 
-.project-ariadne .stage {
+.project-drawing .app {
+  grid-template-columns: 1fr;
+}
+
+.project-ariadne .stage,
+.project-drawing .stage {
   min-height: calc(100vh - 76px);
 }
 
@@ -222,7 +235,7 @@ select {
   position: absolute;
   top: 12px;
   right: 12px;
-  z-index: 3;
+  z-index: 4;
   display: grid;
   gap: 6px;
   min-width: 150px;
@@ -231,6 +244,36 @@ select {
   background: rgba(5, 6, 8, 0.76);
   color: #dce2ef;
   font-size: 0.85rem;
+}
+
+.drawing-control {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(5, 6, 8, 0.76);
+  color: #dce2ef;
+  font-size: 0.85rem;
+}
+
+.drawing-current-color {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+}
+
+.drawing-control button {
+  grid-column: 1 / -1;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .ariadne-render-control button {

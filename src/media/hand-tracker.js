@@ -25,6 +25,17 @@ export async function createHandTracker({ delegate = "CPU" } = {}) {
       return landmarker.detectForVideo(video, time).landmarks ?? [];
     },
 
+    detectHands(video, time = performance.now()) {
+      const result = landmarker.detectForVideo(video, time);
+      const landmarks = result.landmarks ?? [];
+      const handednesses = result.handednesses ?? [];
+
+      return landmarks.map((handLandmarks, index) => ({
+        handedness: handednesses[index]?.[0]?.categoryName ?? "Unknown",
+        landmarks: handLandmarks,
+      }));
+    },
+
     close() {
       landmarker.close?.();
     },
