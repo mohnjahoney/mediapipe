@@ -97,6 +97,27 @@ export function createOverlay(canvas) {
       ctx.fill();
     },
 
+    drawCircle(point, options = {}) {
+      const radius = options.radius ?? 8;
+      const color = options.color ?? "#ffff00";
+      const opacity = options.opacity ?? 1;
+      const x = point.x * canvas.width;
+      const y = point.y * canvas.height;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = options.lineWidth ?? 2;
+      ctx.stroke();
+      ctx.restore();
+    },
+
+    normalizedRadius(value) {
+      return value * Math.min(canvas.width, canvas.height);
+    },
+
     drawLine(start, end, options = {}) {
       const color = options.color ?? "#ffffff";
       const lineWidth = options.lineWidth ?? 3;

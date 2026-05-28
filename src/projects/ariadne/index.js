@@ -56,7 +56,42 @@ export function createAriadneProject({ video, canvas }) {
     const hands = handTracker.detect(video);
     updateThumbMiddleContactPoint(hands);
     overlay.drawHands(hands);
-    drawThumbMiddleContactSegments();
+    drawThumbMiddleEndpointGuides(hands);
+    drawThumbMiddleContactSegmentLines();
+    drawThumbMiddleContactDots();
+
+    animationFrameId = requestAnimationFrame(runFrame);
+  }
+
+  function drawThumbMiddleEndpointGuides(hands) {
+    const radius = overlay.normalizedRadius(thumbToMiddleThreshold / 2);
+
+    for (const landmarks of hands) {
+      const thumb = landmarks[THUMB_TIP];
+      const middle = landmarks[MIDDLE_TIP];
+
+      if (!thumb || !middle) continue;
+
+      const isContacting = distance(thumb, middle) < thumbToMiddleThreshold;
+      const opacity = isContacting ? 0.6 : 0.2;
+
+      overlay.drawCircle(thumb, { color: "#ffe45c", opacity, radius });
+      overlay.drawCircle(middle, { color: "#ffe45c", opacity, radius });
+    }
+  }
+
+  function drawThumbMiddleContactSegmentLines() {
+    for (const segment of thumbMiddleContactSegments) {
+      overlay.drawLine(segment.initial, segment.final, { color: "#ffffff", lineWidth: 3 });
+    }
+  }
+
+  function drawThumbMiddleContactDots() {
+    for (const segment of thumbMiddleContactSegments) {
+      overlay.drawPoint(segment.initial, { color: "#26d96c", radius: 7 });
+      overlay.drawPoint(segment.final, { color: "#ff3333", radius: 7 });
+    }
+
     if (thumbMiddleInitialContactPoint) {
       overlay.drawPoint(thumbMiddleInitialContactPoint, { color: "#26d96c", radius: 7 });
     }
@@ -65,16 +100,6 @@ export function createAriadneProject({ video, canvas }) {
     }
     if (thumbMiddleContactPoint) {
       overlay.drawPoint(thumbMiddleContactPoint, { color: "#ffffff", radius: 6 });
-    }
-
-    animationFrameId = requestAnimationFrame(runFrame);
-  }
-
-  function drawThumbMiddleContactSegments() {
-    for (const segment of thumbMiddleContactSegments) {
-      overlay.drawLine(segment.initial, segment.final, { color: "#ffffff", lineWidth: 3 });
-      overlay.drawPoint(segment.initial, { color: "#26d96c", radius: 7 });
-      overlay.drawPoint(segment.final, { color: "#ff3333", radius: 7 });
     }
   }
 
