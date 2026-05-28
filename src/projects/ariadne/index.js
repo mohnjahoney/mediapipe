@@ -1,11 +1,14 @@
 import { getResolutionPreset, startCamera, stopCamera } from "../../core/camera.js";
 import { createHandTracker } from "../../media/hand-tracker.js";
 import { createOverlay } from "../../visuals/overlay.js";
+import { compileJointPair } from "../../gesture-kit/hand-joints.js";
 import { createMedianHandSmoother } from "./median-hand-smoother.js";
 import { createThreeContactRenderer } from "./three-contact-renderer.js";
 
-const THUMB_TIP = 4;
-const MIDDLE_TIP = 12;
+const thumbMiddleContactJoints = compileJointPair({
+  from: "thumbTip",
+  to: "middleFingerTip",
+});
 const thumbToMiddleBaseThreshold = 0.06;
 const BASE_CONTACT_POINT_RADIUS = 7;
 const MIN_CONTACT_POINT_RADIUS = 4;
@@ -89,8 +92,8 @@ export function createAriadneProject({ video, canvas }) {
 
   function drawThumbMiddleEndpointGuides(hands) {
     for (const landmarks of hands) {
-      const thumb = landmarks[THUMB_TIP];
-      const middle = landmarks[MIDDLE_TIP];
+      const thumb = landmarks[thumbMiddleContactJoints.fromIndex];
+      const middle = landmarks[thumbMiddleContactJoints.toIndex];
 
       if (!thumb || !middle) continue;
 
@@ -235,8 +238,8 @@ function getThumbMiddleContactPoint(hands) {
   let closestDistance = Infinity;
 
   for (const landmarks of hands) {
-    const thumb = landmarks[THUMB_TIP];
-    const middle = landmarks[MIDDLE_TIP];
+    const thumb = landmarks[thumbMiddleContactJoints.fromIndex];
+    const middle = landmarks[thumbMiddleContactJoints.toIndex];
 
     if (!thumb || !middle) continue;
 
