@@ -1,7 +1,7 @@
 import { createFaceAudioInstrumentProject } from "./src/projects/face-audio-instrument/index.js";
 import { createAriadneProject } from "./src/projects/ariadne/index.js?v=2026-05-28-pinch-recognizer";
 import { createDrawingProject } from "./src/projects/drawing/index.js?v=2026-05-28-drawing-calibration";
-import { createWordBubblesProject } from "./src/projects/word-bubbles/index.js?v=2026-05-29-word-bubbles-volume-stretch";
+import { createWordBubblesProject } from "./src/projects/word-bubbles/index.js?v=2026-05-29-word-bubbles-comic-highlight";
 
 const video = document.querySelector("#video");
 const canvas = document.querySelector("#overlay");

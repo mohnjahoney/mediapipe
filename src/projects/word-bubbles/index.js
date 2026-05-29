@@ -223,9 +223,10 @@ export function createWordBubblesProject({ video, canvas }) {
       drawBubblePath(bubble, x, y, bubble.radius);
       bubbleCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
       bubbleCtx.fill();
-      bubbleCtx.lineWidth = 2;
-      bubbleCtx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      bubbleCtx.lineWidth = Math.max(2, bubble.radius * 0.055);
+      bubbleCtx.strokeStyle = "rgba(86, 126, 180, 0.55)";
       bubbleCtx.stroke();
+      drawBubbleHighlight(bubble, x, y);
 
       if (bubble.text) {
         drawBubbleText(bubble, x, y);
@@ -276,6 +277,36 @@ export function createWordBubblesProject({ video, canvas }) {
 
     bubbleCtx.beginPath();
     bubbleCtx.ellipse(x, y, majorRadius, minorRadius, angle, 0, Math.PI * 2);
+  }
+
+  function drawBubbleHighlight(bubble, x, y) {
+    const direction = canvasDirection(bubble.direction);
+    const angle = Math.atan2(direction.y, direction.x);
+    const stretch = clamp(bubble.stretch, 0.8, MAX_BUBBLE_STRETCH);
+    const majorRadius = bubble.radius * stretch;
+    const minorRadius = bubble.radius / Math.sqrt(stretch);
+    const highlight = rotatePoint(-majorRadius * 0.26, -minorRadius * 0.34, angle);
+    const spot = rotatePoint(-majorRadius * 0.08, -minorRadius * 0.1, angle);
+
+    bubbleCtx.save();
+    bubbleCtx.translate(x + highlight.x, y + highlight.y);
+    bubbleCtx.rotate(angle - 0.35);
+    bubbleCtx.beginPath();
+    bubbleCtx.ellipse(0, 0, Math.max(5, majorRadius * 0.16), Math.max(2, minorRadius * 0.045), 0, 0, Math.PI * 2);
+    bubbleCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+    bubbleCtx.lineWidth = Math.max(2, bubble.radius * 0.035);
+    bubbleCtx.lineCap = "round";
+    bubbleCtx.stroke();
+    bubbleCtx.restore();
+
+    bubbleCtx.save();
+    bubbleCtx.translate(x + spot.x, y + spot.y);
+    bubbleCtx.rotate(angle);
+    bubbleCtx.beginPath();
+    bubbleCtx.ellipse(0, 0, Math.max(2.5, majorRadius * 0.055), Math.max(2, minorRadius * 0.04), 0, 0, Math.PI * 2);
+    bubbleCtx.fillStyle = "rgba(255, 255, 255, 0.62)";
+    bubbleCtx.fill();
+    bubbleCtx.restore();
   }
 
   function updateBubbleStretch(bubble, dt) {
@@ -582,6 +613,16 @@ function canvasDirection(direction = { x: 0, y: -1 }) {
     x: -direction.x,
     y: direction.y,
   });
+}
+
+function rotatePoint(x, y, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
 }
 
 function randomBetween(min, max) {
