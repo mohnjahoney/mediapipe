@@ -25,6 +25,7 @@ export function createWordBubblesProject({ video, canvas }) {
   let previousMouthOpen = 0;
   let lastBubbleTriggerTime = 0;
   let activeMouthBubble = null;
+  let pendingSpeechBubble = null;
   let mouthOpenStartedAt = 0;
   let lastFacePose = null;
   let lastFrameTime = performance.now();
@@ -118,6 +119,7 @@ export function createWordBubblesProject({ video, canvas }) {
     if (!isOpening || !isAllowed) return;
 
     activeMouthBubble = createBubble({ facePose, word: "" });
+    pendingSpeechBubble = activeMouthBubble;
     mouthOpenStartedAt = time;
     bubbles.push(activeMouthBubble);
     lastBubbleTriggerTime = time;
@@ -170,7 +172,7 @@ export function createWordBubblesProject({ video, canvas }) {
       }
       bubble.radius += (bubble.targetRadius - bubble.radius) * Math.min(1, dt * 4);
 
-      if (bubble !== activeMouthBubble && !bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
+      if (bubble !== activeMouthBubble && bubble !== pendingSpeechBubble && !bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
         bubble.targetRadius = Math.min(bubble.targetRadius, 16 * bubble.sizeScale);
       }
     }
@@ -178,10 +180,17 @@ export function createWordBubblesProject({ video, canvas }) {
     bubbles = bubbles.filter((bubble) => {
       const ageMs = bubble.age * 1000;
       const isOnscreen = bubble.x > -0.2 && bubble.x < 1.2 && bubble.y > -0.25 && bubble.y < 1.15;
-      return isOnscreen && ageMs < 12000 && !(bubble !== activeMouthBubble && ageMs > PENDING_WORD_TIMEOUT_MS && !bubble.text);
+      return (
+        isOnscreen &&
+        ageMs < 12000 &&
+        !(bubble !== activeMouthBubble && bubble !== pendingSpeechBubble && ageMs > PENDING_WORD_TIMEOUT_MS && !bubble.text)
+      );
     });
     if (activeMouthBubble && !bubbles.includes(activeMouthBubble)) {
       activeMouthBubble = null;
+    }
+    if (pendingSpeechBubble && !bubbles.includes(pendingSpeechBubble)) {
+      pendingSpeechBubble = null;
     }
 
     panel.setBubbleCount(bubbles.length);
@@ -320,7 +329,9 @@ export function createWordBubblesProject({ video, canvas }) {
   function assignWordToBubble(word) {
     if (!word) return;
 
-    const bubble = bubbles.find((candidate) => !candidate.text);
+    const bubble = bubbleCanReceiveWord(pendingSpeechBubble)
+      ? pendingSpeechBubble
+      : bubbles.find((candidate) => bubbleCanReceiveWord(candidate));
     const target = bubble ?? createBubble({ facePose: lastFacePose, word });
 
     target.text = word;
@@ -332,10 +343,17 @@ export function createWordBubblesProject({ video, canvas }) {
       activeMouthBubble = null;
       mouthOpenStartedAt = 0;
     }
+    if (target === pendingSpeechBubble) {
+      pendingSpeechBubble = null;
+    }
 
     if (!bubble) {
       bubbles.push(target);
     }
+  }
+
+  function bubbleCanReceiveWord(bubble) {
+    return Boolean(bubble && !bubble.text && bubbles.includes(bubble));
   }
 
   function updateSpeechControls() {
