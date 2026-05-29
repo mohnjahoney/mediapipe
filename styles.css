@@ -73,6 +73,10 @@ canvas {
   z-index: 3;
 }
 
+.project-word-bubbles video {
+  opacity: 0;
+}
+
 .loading {
   position: absolute;
   left: 16px;

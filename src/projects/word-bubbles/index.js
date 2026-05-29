@@ -11,13 +11,49 @@ const MOUTH_HOLD_RADIUS_FACTOR = 60;
 const MAX_BUBBLE_STRETCH = 1.95;
 const STRETCH_SPRING = 24;
 const STRETCH_DAMPING = 6.8;
+const UNDERWATER_VERTEX_SHADER = `
+  attribute vec2 a_position;
+  varying vec2 v_uv;
+
+  void main() {
+    v_uv = a_position * 0.5 + 0.5;
+    gl_Position = vec4(a_position, 0.0, 1.0);
+  }
+`;
+const UNDERWATER_FRAGMENT_SHADER = `
+  precision mediump float;
+
+  uniform sampler2D u_texture;
+  uniform float u_time;
+  uniform vec2 u_resolution;
+  varying vec2 v_uv;
+
+  void main() {
+    vec2 uv = v_uv;
+    float slowTime = u_time * 0.42;
+    float broadWave = sin(uv.y * 15.0 + slowTime * 1.7);
+    float crossWave = sin((uv.x * 7.0 + uv.y * 5.0) - slowTime * 1.1);
+    float shimmer = sin(uv.y * 34.0 - slowTime * 0.9) * 0.5 + 0.5;
+    vec2 warp = vec2((broadWave + crossWave * 0.45) * 0.0055, sin(uv.x * 10.0 + slowTime) * 0.0025);
+    vec4 color = texture2D(u_texture, clamp(uv + warp, 0.0, 1.0));
+
+    color.rgb = (color.rgb - 0.5) * 1.18 + 0.5;
+    color.rgb *= vec3(0.56, 0.82, 1.12);
+    color.rgb *= 0.72 + shimmer * 0.06;
+    color.rgb += vec3(0.0, 0.025, 0.045);
+
+    gl_FragColor = vec4(color.rgb, 1.0);
+  }
+`;
 
 export function createWordBubblesProject({ video, canvas }) {
   const stage = canvas.closest(".stage");
   const controls = document.querySelector(".controls");
   const loading = document.querySelector("#loading");
   const bubbleCanvas = document.createElement("canvas");
-  const bubbleCtx = bubbleCanvas.getContext("2d");
+  const compositeCanvas = document.createElement("canvas");
+  const bubbleCtx = compositeCanvas.getContext("2d");
+  const underwaterRenderer = createUnderwaterRenderer(bubbleCanvas);
   const panel = createWordBubblesPanel(stage);
 
   let faceTracker;
@@ -82,7 +118,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
   function runFrame(time = performance.now()) {
     resizeBubbleCanvas();
-    bubbleCtx.clearRect(0, 0, bubbleCanvas.width, bubbleCanvas.height);
+    drawCompositeVideo();
 
     const dt = Math.min(0.05, (time - lastFrameTime) / 1000);
     lastFrameTime = time;
@@ -96,6 +132,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
     updateBubbles(dt, time);
     drawBubbles();
+    underwaterRenderer.render(compositeCanvas, time / 1000);
 
     animationFrameId = requestAnimationFrame(runFrame);
   }
@@ -214,8 +251,8 @@ export function createWordBubblesProject({ video, canvas }) {
 
   function drawBubbles() {
     for (const bubble of bubbles) {
-      const x = (1 - bubble.x) * bubbleCanvas.width;
-      const y = bubble.y * bubbleCanvas.height;
+      const x = (1 - bubble.x) * compositeCanvas.width;
+      const y = bubble.y * compositeCanvas.height;
       const opacity = clamp(1 - Math.max(0, bubble.age - 9) / 3, 0, 1);
 
       bubbleCtx.save();
@@ -490,6 +527,25 @@ export function createWordBubblesProject({ video, canvas }) {
       bubbleCanvas.width = width;
       bubbleCanvas.height = height;
     }
+
+    if (compositeCanvas.width !== width || compositeCanvas.height !== height) {
+      compositeCanvas.width = width;
+      compositeCanvas.height = height;
+    }
+
+    underwaterRenderer.resize();
+  }
+
+  function drawCompositeVideo() {
+    bubbleCtx.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+
+    if (!video.videoWidth || !video.videoHeight) return;
+
+    bubbleCtx.save();
+    bubbleCtx.translate(compositeCanvas.width, 0);
+    bubbleCtx.scale(-1, 1);
+    bubbleCtx.drawImage(video, 0, 0, compositeCanvas.width, compositeCanvas.height);
+    bubbleCtx.restore();
   }
 }
 
@@ -523,6 +579,87 @@ function createWordBubblesPanel(stage) {
       status.textContent = message;
     },
   };
+}
+
+function createUnderwaterRenderer(canvas) {
+  const gl = canvas.getContext("webgl", { alpha: false }) ?? canvas.getContext("experimental-webgl", { alpha: false });
+
+  if (!gl) {
+    const ctx = canvas.getContext("2d");
+
+    return {
+      render(source) {
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      },
+      resize() {},
+    };
+  }
+
+  const program = createProgram(gl, UNDERWATER_VERTEX_SHADER, UNDERWATER_FRAGMENT_SHADER);
+  const positionLocation = gl.getAttribLocation(program, "a_position");
+  const textureLocation = gl.getUniformLocation(program, "u_texture");
+  const timeLocation = gl.getUniformLocation(program, "u_time");
+  const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+  const positionBuffer = gl.createBuffer();
+  const texture = gl.createTexture();
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  return {
+    render(source, time) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(program);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.uniform1i(textureLocation, 0);
+      gl.uniform1f(timeLocation, time);
+      gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    },
+    resize() {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    },
+  };
+}
+
+function createProgram(gl, vertexSource, fragmentSource) {
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+  const program = gl.createProgram();
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program) || "Could not link underwater shader.");
+  }
+
+  return program;
+}
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader) || "Could not compile underwater shader.");
+  }
+
+  return shader;
 }
 
 function measureFacePose(landmarks) {
