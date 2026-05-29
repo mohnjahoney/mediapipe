@@ -7,6 +7,7 @@ const MOUTH_OPEN_MIN = 0.055;
 const BUBBLE_TRIGGER_INTERVAL_MS = 260;
 const PENDING_WORD_TIMEOUT_MS = 2200;
 const MAX_MOUTH_HOLD_BUBBLE_RADIUS = 126;
+const MOUTH_HOLD_RADIUS_FACTOR = 30;
 
 export function createWordBubblesProject({ video, canvas }) {
   const stage = canvas.closest(".stage");
@@ -97,6 +98,7 @@ export function createWordBubblesProject({ video, canvas }) {
     previousMouthOpen = facePose.mouthOpen;
 
     if (isClosing) {
+      detachActiveMouthBubble();
       activeMouthBubble = null;
       mouthOpenStartedAt = 0;
       return;
@@ -104,13 +106,12 @@ export function createWordBubblesProject({ video, canvas }) {
 
     if (isMouthOpen && activeMouthBubble) {
       const holdSeconds = Math.max(0, (time - mouthOpenStartedAt) / 1000);
-      const openAmount = clamp((facePose.mouthOpen - MOUTH_OPEN_MIN) / 0.22, 0, 1);
-      const heldRadius = 34 + holdSeconds * 36 + openAmount * 38;
+      const heldRadius = MOUTH_HOLD_RADIUS_FACTOR * Math.sqrt(holdSeconds);
 
-      activeMouthBubble.targetRadius = Math.max(
-        activeMouthBubble.targetRadius,
-        Math.min(MAX_MOUTH_HOLD_BUBBLE_RADIUS, heldRadius * activeMouthBubble.sizeScale)
-      );
+      activeMouthBubble.x = facePose.mouth.x;
+      activeMouthBubble.y = facePose.mouth.y;
+      activeMouthBubble.direction = facePose.direction;
+      activeMouthBubble.targetRadius = clamp(heldRadius, 8, MAX_MOUTH_HOLD_BUBBLE_RADIUS);
       return;
     }
 
@@ -129,30 +130,44 @@ export function createWordBubblesProject({ video, canvas }) {
     const sizeScale = randomBetween(0.78, 1.28);
     const textScale = randomBetween(0.72, 1.44);
     const wordRadius = word ? bubbleRadiusForWord(word, sizeScale) : 34 * sizeScale;
+    const vx = direction.x * speed + horizontalDrift + randomBetween(-0.012, 0.012);
+    const vy = direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018);
 
     return {
       age: 0,
       direction,
       id: randomId(),
+      isAttached: !word,
       growthRate: randomBetween(1.6, 4.4),
       radius: word ? wordRadius * 0.6 : 8,
       sizeScale,
-      targetRadius: word ? wordRadius : 34 * sizeScale,
+      targetRadius: word ? wordRadius : 8,
       text: word,
       textScale,
-      vx: direction.x * speed + horizontalDrift + randomBetween(-0.012, 0.012),
-      vy: direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018),
+      vx,
+      vy,
       x: facePose?.mouth.x ?? 0.5,
       y: facePose?.mouth.y ?? 0.5,
     };
   }
 
+  function detachActiveMouthBubble() {
+    if (!activeMouthBubble) return;
+
+    const direction = activeMouthBubble.direction ?? { x: 0, y: -1 };
+    activeMouthBubble.isAttached = false;
+    activeMouthBubble.vx = direction.x * randomBetween(0.055, 0.09) + Math.sign(direction.x || 1) * randomBetween(0.035, 0.065);
+    activeMouthBubble.vy = direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018);
+  }
+
   function updateBubbles(dt, time) {
     for (const bubble of bubbles) {
       bubble.age += dt;
-      bubble.x += bubble.vx * dt;
-      bubble.y += bubble.vy * dt;
-      bubble.targetRadius += bubble.growthRate * dt;
+      if (!bubble.isAttached) {
+        bubble.x += bubble.vx * dt;
+        bubble.y += bubble.vy * dt;
+        bubble.targetRadius += bubble.growthRate * dt;
+      }
       bubble.radius += (bubble.targetRadius - bubble.radius) * Math.min(1, dt * 4);
 
       if (bubble !== activeMouthBubble && !bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
@@ -311,6 +326,12 @@ export function createWordBubblesProject({ video, canvas }) {
     target.text = word;
     target.targetRadius = Math.max(target.targetRadius, bubbleRadiusForWord(word, target.sizeScale));
     target.radius = Math.max(target.radius, 18);
+
+    if (target === activeMouthBubble) {
+      detachActiveMouthBubble();
+      activeMouthBubble = null;
+      mouthOpenStartedAt = 0;
+    }
 
     if (!bubble) {
       bubbles.push(target);
