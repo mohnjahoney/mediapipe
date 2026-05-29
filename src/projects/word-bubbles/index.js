@@ -8,6 +8,9 @@ const BUBBLE_TRIGGER_INTERVAL_MS = 260;
 const PENDING_WORD_TIMEOUT_MS = 2200;
 const MAX_MOUTH_HOLD_BUBBLE_RADIUS = 126;
 const MOUTH_HOLD_RADIUS_FACTOR = 60;
+const MAX_BUBBLE_STRETCH = 1.95;
+const STRETCH_SPRING = 24;
+const STRETCH_DAMPING = 6.8;
 
 export function createWordBubblesProject({ video, canvas }) {
   const stage = canvas.closest(".stage");
@@ -21,6 +24,11 @@ export function createWordBubblesProject({ video, canvas }) {
   let stream;
   let animationFrameId = 0;
   let recognition = null;
+  let micStream = null;
+  let audioContext = null;
+  let analyser = null;
+  let audioSamples = null;
+  let micLevel = 0;
   let isListening = false;
   let previousMouthOpen = 0;
   let lastBubbleTriggerTime = 0;
@@ -78,11 +86,12 @@ export function createWordBubblesProject({ video, canvas }) {
 
     const dt = Math.min(0.05, (time - lastFrameTime) / 1000);
     lastFrameTime = time;
+    const volume = readMicLevel();
 
     const landmarks = faceTracker?.detect(video, time);
     if (landmarks) {
       lastFacePose = measureFacePose(landmarks);
-      maybeTriggerBubble(lastFacePose, time);
+      maybeTriggerBubble(lastFacePose, time, volume);
     }
 
     updateBubbles(dt, time);
@@ -91,7 +100,7 @@ export function createWordBubblesProject({ video, canvas }) {
     animationFrameId = requestAnimationFrame(runFrame);
   }
 
-  function maybeTriggerBubble(facePose, time) {
+  function maybeTriggerBubble(facePose, time, volume) {
     const isMouthOpen = facePose.mouthOpen > MOUTH_OPEN_MIN;
     const isOpening = isMouthOpen && previousMouthOpen <= MOUTH_OPEN_MIN;
     const isClosing = !isMouthOpen && previousMouthOpen > MOUTH_OPEN_MIN;
@@ -108,11 +117,13 @@ export function createWordBubblesProject({ video, canvas }) {
     if (isMouthOpen && activeMouthBubble) {
       const holdSeconds = Math.max(0, (time - mouthOpenStartedAt) / 1000);
       const heldRadius = MOUTH_HOLD_RADIUS_FACTOR * Math.sqrt(holdSeconds);
+      const holdInfluence = clamp(holdSeconds * 0.16, 0, 0.48);
 
       activeMouthBubble.x = facePose.mouth.x;
       activeMouthBubble.y = facePose.mouth.y;
       activeMouthBubble.direction = facePose.direction;
       activeMouthBubble.targetRadius = clamp(heldRadius, 8, MAX_MOUTH_HOLD_BUBBLE_RADIUS);
+      activeMouthBubble.targetStretch = clamp(1 + volume * (0.62 + holdInfluence), 1, MAX_BUBBLE_STRETCH);
       return;
     }
 
@@ -143,6 +154,9 @@ export function createWordBubblesProject({ video, canvas }) {
       growthRate: randomBetween(1.6, 4.4),
       radius: word ? wordRadius * 0.6 : 8,
       sizeScale,
+      stretch: 1,
+      stretchVelocity: 0,
+      targetStretch: 1,
       targetRadius: word ? wordRadius : 8,
       text: word,
       textScale,
@@ -158,6 +172,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
     const direction = activeMouthBubble.direction ?? { x: 0, y: -1 };
     activeMouthBubble.isAttached = false;
+    activeMouthBubble.targetStretch = 1;
     activeMouthBubble.vx = direction.x * randomBetween(0.055, 0.09) + Math.sign(direction.x || 1) * randomBetween(0.035, 0.065);
     activeMouthBubble.vy = direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018);
   }
@@ -171,6 +186,7 @@ export function createWordBubblesProject({ video, canvas }) {
         bubble.targetRadius += bubble.growthRate * dt;
       }
       bubble.radius += (bubble.targetRadius - bubble.radius) * Math.min(1, dt * 4);
+      updateBubbleStretch(bubble, dt);
 
       if (bubble !== activeMouthBubble && bubble !== pendingSpeechBubble && !bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
         bubble.targetRadius = Math.min(bubble.targetRadius, 16 * bubble.sizeScale);
@@ -204,8 +220,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
       bubbleCtx.save();
       bubbleCtx.globalAlpha = opacity;
-      bubbleCtx.beginPath();
-      bubbleCtx.arc(x, y, bubble.radius, 0, Math.PI * 2);
+      drawBubblePath(bubble, x, y, bubble.radius);
       bubbleCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
       bubbleCtx.fill();
       bubbleCtx.lineWidth = 2;
@@ -225,8 +240,7 @@ export function createWordBubblesProject({ video, canvas }) {
     const fontSize = bubbleFontSize(bubble, lines);
 
     bubbleCtx.save();
-    bubbleCtx.beginPath();
-    bubbleCtx.arc(x, y, bubble.radius * 0.94, 0, Math.PI * 2);
+    drawBubblePath(bubble, x, y, bubble.radius * 0.94);
     bubbleCtx.clip();
     bubbleCtx.fillStyle = "#15171d";
     bubbleCtx.strokeStyle = "rgba(255, 255, 255, 0.45)";
@@ -253,15 +267,42 @@ export function createWordBubblesProject({ video, canvas }) {
     bubbleCtx.restore();
   }
 
-  function startListening() {
+  function drawBubblePath(bubble, x, y, radius) {
+    const direction = canvasDirection(bubble.direction);
+    const angle = Math.atan2(direction.y, direction.x);
+    const stretch = clamp(bubble.stretch, 0.8, MAX_BUBBLE_STRETCH);
+    const majorRadius = radius * stretch;
+    const minorRadius = radius / Math.sqrt(stretch);
+
+    bubbleCtx.beginPath();
+    bubbleCtx.ellipse(x, y, majorRadius, minorRadius, angle, 0, Math.PI * 2);
+  }
+
+  function updateBubbleStretch(bubble, dt) {
+    const displacement = bubble.targetStretch - bubble.stretch;
+    const acceleration = displacement * STRETCH_SPRING - bubble.stretchVelocity * STRETCH_DAMPING;
+
+    bubble.stretchVelocity += acceleration * dt;
+    bubble.stretch += bubble.stretchVelocity * dt;
+    bubble.stretch = clamp(bubble.stretch, 0.8, MAX_BUBBLE_STRETCH);
+  }
+
+  async function startListening() {
     if (!recognition) {
       panel.setStatus("Speech recognition is not available in this browser.");
       return;
     }
 
     try {
+      try {
+        await startMicrophoneLevel();
+      } catch {
+        panel.setStatus("Listening without volume shape.");
+      }
+
       recognition.start();
-    } catch {
+    } catch (error) {
+      panel.setStatus(error.message || "Could not start listening.");
       // Some browsers throw if recognition is already starting.
     }
   }
@@ -273,6 +314,7 @@ export function createWordBubblesProject({ video, canvas }) {
     } catch {
       // Some browsers throw if recognition is already stopped.
     }
+    stopMicrophoneLevel();
   }
 
   function createSpeechRecognition() {
@@ -298,6 +340,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
     speech.addEventListener("end", () => {
       isListening = false;
+      stopMicrophoneLevel();
       panel.setStatus("Not listening.");
       updateSpeechControls();
     });
@@ -354,6 +397,53 @@ export function createWordBubblesProject({ video, canvas }) {
 
   function bubbleCanReceiveWord(bubble) {
     return Boolean(bubble && !bubble.text && bubbles.includes(bubble));
+  }
+
+  async function startMicrophoneLevel() {
+    if (analyser) return;
+
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const AudioContextConstructor = window.AudioContext ?? window.webkitAudioContext;
+    if (!AudioContextConstructor) {
+      throw new Error("Audio analysis is not available in this browser.");
+    }
+
+    audioContext = new AudioContextConstructor();
+    await audioContext.resume();
+
+    const source = audioContext.createMediaStreamSource(micStream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    audioSamples = new Uint8Array(analyser.fftSize);
+    source.connect(analyser);
+  }
+
+  function stopMicrophoneLevel() {
+    micStream?.getTracks().forEach((track) => track.stop());
+    micStream = null;
+    analyser = null;
+    audioSamples = null;
+    micLevel = 0;
+    audioContext?.close();
+    audioContext = null;
+  }
+
+  function readMicLevel() {
+    if (!analyser || !audioSamples) return micLevel;
+
+    analyser.getByteTimeDomainData(audioSamples);
+
+    let sumSquares = 0;
+    for (const sample of audioSamples) {
+      const centered = (sample - 128) / 128;
+      sumSquares += centered * centered;
+    }
+
+    const rms = Math.sqrt(sumSquares / audioSamples.length);
+    const level = clamp((rms - 0.015) / 0.12, 0, 1);
+    micLevel += (level - micLevel) * 0.28;
+
+    return micLevel;
   }
 
   function updateSpeechControls() {
@@ -485,6 +575,13 @@ function normalizeVector(vector) {
     x: vector.x / length,
     y: vector.y / length,
   };
+}
+
+function canvasDirection(direction = { x: 0, y: -1 }) {
+  return normalizeVector({
+    x: -direction.x,
+    y: direction.y,
+  });
 }
 
 function randomBetween(min, max) {
