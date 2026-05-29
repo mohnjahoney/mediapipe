@@ -11,6 +11,8 @@ const MOUTH_HOLD_RADIUS_FACTOR = 60;
 const MAX_BUBBLE_STRETCH = 1.95;
 const STRETCH_SPRING = 24;
 const STRETCH_DAMPING = 6.8;
+const HORIZONTAL_SLOWDOWN_DISTANCE = 0.25;
+const HORIZONTAL_DAMPING = 4.2;
 const UNDERWATER_VERTEX_SHADER = `
   attribute vec2 a_position;
   varying vec2 v_uv;
@@ -199,6 +201,7 @@ export function createWordBubblesProject({ video, canvas }) {
       textScale,
       vx,
       vy,
+      releaseX: facePose?.mouth.x ?? 0.5,
       x: facePose?.mouth.x ?? 0.5,
       y: facePose?.mouth.y ?? 0.5,
     };
@@ -209,6 +212,7 @@ export function createWordBubblesProject({ video, canvas }) {
 
     const direction = activeMouthBubble.direction ?? { x: 0, y: -1 };
     activeMouthBubble.isAttached = false;
+    activeMouthBubble.releaseX = activeMouthBubble.x;
     activeMouthBubble.targetStretch = 1;
     activeMouthBubble.vx = direction.x * randomBetween(0.055, 0.09) + Math.sign(direction.x || 1) * randomBetween(0.035, 0.065);
     activeMouthBubble.vy = direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018);
@@ -218,6 +222,12 @@ export function createWordBubblesProject({ video, canvas }) {
     for (const bubble of bubbles) {
       bubble.age += dt;
       if (!bubble.isAttached) {
+        const horizontalTravel = Math.abs(bubble.x - bubble.releaseX);
+        if (horizontalTravel > HORIZONTAL_SLOWDOWN_DISTANCE) {
+          const dampingAmount = Math.min(1, HORIZONTAL_DAMPING * dt);
+          bubble.vx += (0 - bubble.vx) * dampingAmount;
+        }
+
         bubble.x += bubble.vx * dt;
         bubble.y += bubble.vy * dt;
         bubble.targetRadius += bubble.growthRate * dt;
