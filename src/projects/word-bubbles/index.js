@@ -6,6 +6,7 @@ const FACE_CENTER_INDICES = [10, 152, 234, 454];
 const MOUTH_OPEN_MIN = 0.055;
 const BUBBLE_TRIGGER_INTERVAL_MS = 260;
 const PENDING_WORD_TIMEOUT_MS = 2200;
+const MAX_MOUTH_HOLD_BUBBLE_RADIUS = 126;
 
 export function createWordBubblesProject({ video, canvas }) {
   const stage = canvas.closest(".stage");
@@ -22,6 +23,8 @@ export function createWordBubblesProject({ video, canvas }) {
   let isListening = false;
   let previousMouthOpen = 0;
   let lastBubbleTriggerTime = 0;
+  let activeMouthBubble = null;
+  let mouthOpenStartedAt = 0;
   let lastFacePose = null;
   let lastFrameTime = performance.now();
   let bubbles = [];
@@ -87,13 +90,35 @@ export function createWordBubblesProject({ video, canvas }) {
   }
 
   function maybeTriggerBubble(facePose, time) {
-    const isOpening = facePose.mouthOpen > MOUTH_OPEN_MIN && previousMouthOpen <= MOUTH_OPEN_MIN;
+    const isMouthOpen = facePose.mouthOpen > MOUTH_OPEN_MIN;
+    const isOpening = isMouthOpen && previousMouthOpen <= MOUTH_OPEN_MIN;
+    const isClosing = !isMouthOpen && previousMouthOpen > MOUTH_OPEN_MIN;
     const isAllowed = time - lastBubbleTriggerTime > BUBBLE_TRIGGER_INTERVAL_MS;
     previousMouthOpen = facePose.mouthOpen;
 
+    if (isClosing) {
+      activeMouthBubble = null;
+      mouthOpenStartedAt = 0;
+      return;
+    }
+
+    if (isMouthOpen && activeMouthBubble) {
+      const holdSeconds = Math.max(0, (time - mouthOpenStartedAt) / 1000);
+      const openAmount = clamp((facePose.mouthOpen - MOUTH_OPEN_MIN) / 0.22, 0, 1);
+      const heldRadius = 34 + holdSeconds * 36 + openAmount * 38;
+
+      activeMouthBubble.targetRadius = Math.max(
+        activeMouthBubble.targetRadius,
+        Math.min(MAX_MOUTH_HOLD_BUBBLE_RADIUS, heldRadius * activeMouthBubble.sizeScale)
+      );
+      return;
+    }
+
     if (!isOpening || !isAllowed) return;
 
-    bubbles.push(createBubble({ facePose, word: "" }));
+    activeMouthBubble = createBubble({ facePose, word: "" });
+    mouthOpenStartedAt = time;
+    bubbles.push(activeMouthBubble);
     lastBubbleTriggerTime = time;
   }
 
@@ -101,14 +126,20 @@ export function createWordBubblesProject({ video, canvas }) {
     const direction = facePose?.direction ?? { x: 0, y: -1 };
     const horizontalDrift = Math.sign(direction.x || randomBetween(-1, 1)) * randomBetween(0.035, 0.065);
     const speed = randomBetween(0.055, 0.09);
+    const sizeScale = randomBetween(0.78, 1.28);
+    const textScale = randomBetween(0.72, 1.44);
+    const wordRadius = word ? bubbleRadiusForWord(word, sizeScale) : 34 * sizeScale;
 
     return {
       age: 0,
       direction,
       id: randomId(),
-      radius: word ? bubbleRadiusForWord(word) : 8,
-      targetRadius: word ? bubbleRadiusForWord(word) : 34,
+      growthRate: randomBetween(1.6, 4.4),
+      radius: word ? wordRadius * 0.6 : 8,
+      sizeScale,
+      targetRadius: word ? wordRadius : 34 * sizeScale,
       text: word,
+      textScale,
       vx: direction.x * speed + horizontalDrift + randomBetween(-0.012, 0.012),
       vy: direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018),
       x: facePose?.mouth.x ?? 0.5,
@@ -121,18 +152,22 @@ export function createWordBubblesProject({ video, canvas }) {
       bubble.age += dt;
       bubble.x += bubble.vx * dt;
       bubble.y += bubble.vy * dt;
+      bubble.targetRadius += bubble.growthRate * dt;
       bubble.radius += (bubble.targetRadius - bubble.radius) * Math.min(1, dt * 4);
 
-      if (!bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
-        bubble.targetRadius = 16;
+      if (bubble !== activeMouthBubble && !bubble.text && bubble.age * 1000 > PENDING_WORD_TIMEOUT_MS) {
+        bubble.targetRadius = Math.min(bubble.targetRadius, 16 * bubble.sizeScale);
       }
     }
 
     bubbles = bubbles.filter((bubble) => {
       const ageMs = bubble.age * 1000;
       const isOnscreen = bubble.x > -0.2 && bubble.x < 1.2 && bubble.y > -0.25 && bubble.y < 1.15;
-      return isOnscreen && ageMs < 12000 && !(ageMs > PENDING_WORD_TIMEOUT_MS && !bubble.text);
+      return isOnscreen && ageMs < 12000 && !(bubble !== activeMouthBubble && ageMs > PENDING_WORD_TIMEOUT_MS && !bubble.text);
     });
+    if (activeMouthBubble && !bubbles.includes(activeMouthBubble)) {
+      activeMouthBubble = null;
+    }
 
     panel.setBubbleCount(bubbles.length);
   }
@@ -274,7 +309,7 @@ export function createWordBubblesProject({ video, canvas }) {
     const target = bubble ?? createBubble({ facePose: lastFacePose, word });
 
     target.text = word;
-    target.targetRadius = bubbleRadiusForWord(word);
+    target.targetRadius = Math.max(target.targetRadius, bubbleRadiusForWord(word, target.sizeScale));
     target.radius = Math.max(target.radius, 18);
 
     if (!bubble) {
@@ -368,7 +403,7 @@ function bubbleFontSize(bubble, lines) {
   const multiLineScale = longestLineLength <= 5 ? 0.62 : 0.54;
   const baseScale = lines.length === 1 ? singleLineScale : multiLineScale;
 
-  return clamp(bubble.radius * baseScale, 16, bubble.radius * 1.05);
+  return clamp(bubble.radius * baseScale * bubble.textScale, 14, bubble.radius * 1.35);
 }
 
 function countSyllables(word) {
@@ -376,8 +411,8 @@ function countSyllables(word) {
   return matches?.length ?? 1;
 }
 
-function bubbleRadiusForWord(word) {
-  return clamp(28 + word.length * 3.2, 38, 76);
+function bubbleRadiusForWord(word, sizeScale = 1) {
+  return clamp((24 + word.length * 3.4) * sizeScale, 30, 90);
 }
 
 function averagePoints(points) {
