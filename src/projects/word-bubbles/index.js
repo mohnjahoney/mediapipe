@@ -99,7 +99,8 @@ export function createWordBubblesProject({ video, canvas }) {
 
   function createBubble({ facePose, word }) {
     const direction = facePose?.direction ?? { x: 0, y: -1 };
-    const speed = randomBetween(0.025, 0.045);
+    const horizontalDrift = Math.sign(direction.x || randomBetween(-1, 1)) * randomBetween(0.035, 0.065);
+    const speed = randomBetween(0.055, 0.09);
 
     return {
       age: 0,
@@ -108,8 +109,8 @@ export function createWordBubblesProject({ video, canvas }) {
       radius: word ? bubbleRadiusForWord(word) : 8,
       targetRadius: word ? bubbleRadiusForWord(word) : 34,
       text: word,
-      vx: direction.x * speed + randomBetween(-0.01, 0.01),
-      vy: direction.y * speed - randomBetween(0.01, 0.025),
+      vx: direction.x * speed + horizontalDrift + randomBetween(-0.012, 0.012),
+      vy: direction.y * randomBetween(0.008, 0.018) - randomBetween(0.008, 0.018),
       x: facePose?.mouth.x ?? 0.5,
       y: facePose?.mouth.y ?? 0.5,
     };
@@ -162,18 +163,35 @@ export function createWordBubblesProject({ video, canvas }) {
 
   function drawBubbleText(bubble, x, y) {
     const lines = hyphenatedLines(bubble.text);
-    const fontSize = Math.max(12, Math.min(22, bubble.radius * 0.34));
+    const fontSize = bubbleFontSize(bubble, lines);
 
+    bubbleCtx.save();
+    bubbleCtx.beginPath();
+    bubbleCtx.arc(x, y, bubble.radius * 0.94, 0, Math.PI * 2);
+    bubbleCtx.clip();
     bubbleCtx.fillStyle = "#15171d";
-    bubbleCtx.font = `700 ${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+    bubbleCtx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+    bubbleCtx.lineWidth = Math.max(2, fontSize * 0.08);
+    bubbleCtx.shadowColor = "rgba(255, 255, 255, 0.35)";
+    bubbleCtx.shadowBlur = bubble.radius * 0.12;
+    bubbleCtx.font = `900 ${fontSize}px "Arial Rounded MT Bold", "Marker Felt", "Comic Sans MS", ui-rounded, system-ui, sans-serif`;
     bubbleCtx.textAlign = "center";
     bubbleCtx.textBaseline = "middle";
 
-    const lineHeight = fontSize * 1.05;
+    const lineHeight = fontSize * 0.88;
     const startY = y - ((lines.length - 1) * lineHeight) / 2;
     lines.forEach((line, index) => {
-      bubbleCtx.fillText(line, x, startY + index * lineHeight);
+      const lineY = startY + index * lineHeight;
+      const squeeze = 1 + Math.max(0, 34 - bubble.radius) / 120;
+
+      bubbleCtx.save();
+      bubbleCtx.translate(x, lineY);
+      bubbleCtx.scale(squeeze, 1.08);
+      bubbleCtx.strokeText(line, 0, 0);
+      bubbleCtx.fillText(line, 0, 0);
+      bubbleCtx.restore();
     });
+    bubbleCtx.restore();
   }
 
   function startListening() {
@@ -322,8 +340,8 @@ function measureFacePose(landmarks) {
   const mouthWidth = distance(leftMouth, rightMouth);
   const mouthOpen = distance(upperLip, lowerLip) / Math.max(0.001, mouthWidth);
   const rawDirection = normalizeVector({
-    x: (mouth.x - faceCenter.x) * 4,
-    y: -0.8 + (mouth.y - faceCenter.y) * 1.2,
+    x: (mouth.x - faceCenter.x) * 8,
+    y: -0.32 + (mouth.y - faceCenter.y) * 0.8,
   });
 
   return {
@@ -342,6 +360,15 @@ function hyphenatedLines(word) {
 
   const splitAt = Math.max(3, Math.min(word.length - 3, Math.round(word.length / 2)));
   return [`${word.slice(0, splitAt)}-`, word.slice(splitAt)];
+}
+
+function bubbleFontSize(bubble, lines) {
+  const longestLineLength = Math.max(...lines.map((line) => line.length));
+  const singleLineScale = longestLineLength <= 4 ? 0.92 : 0.76;
+  const multiLineScale = longestLineLength <= 5 ? 0.62 : 0.54;
+  const baseScale = lines.length === 1 ? singleLineScale : multiLineScale;
+
+  return clamp(bubble.radius * baseScale, 16, bubble.radius * 1.05);
 }
 
 function countSyllables(word) {
