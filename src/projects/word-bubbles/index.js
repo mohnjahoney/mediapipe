@@ -7,7 +7,7 @@ const MOUTH_OPEN_MIN = 0.055;
 const BUBBLE_TRIGGER_INTERVAL_MS = 260;
 const PENDING_WORD_TIMEOUT_MS = 2200;
 const MAX_MOUTH_HOLD_BUBBLE_RADIUS = 126;
-const MOUTH_HOLD_RADIUS_FACTOR = 30;
+const MOUTH_HOLD_RADIUS_FACTOR = 60;
 
 export function createWordBubblesProject({ video, canvas }) {
   const stage = canvas.closest(".stage");
